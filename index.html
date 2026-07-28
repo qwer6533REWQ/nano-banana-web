@@ -109,6 +109,10 @@
     .image-preview .thumb img { width: 100%; height: 100%; object-fit: cover; }
     .image-preview .thumb .remove { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; font-size: 12px; cursor: pointer; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
 
+    /* 余额 */
+    .balance-info { margin-top: 10px; font-size: 13px; color: #2e7d32; background: #e8f5e9; padding: 9px 12px; border-radius: 8px; text-align: center; font-weight: 600; word-break: break-all; }
+    .field-hint { font-size: 11px; color: var(--text-secondary); margin-top: 5px; line-height: 1.4; }
+
   </style>
 </head>
 <body>
@@ -139,6 +143,8 @@
               <input type="password" id="apiKey" placeholder="sk-xxxxxxxxxxx" autocomplete="off">
               <button class="btn btn-outline" id="toggleKeyBtn" type="button" title="显示/隐藏" style="padding:11px 14px;">👁</button>
             </div>
+            <button class="btn btn-ghost" style="margin-top:8px; width:100%; font-size:13px;" onclick="checkBalance()">💰 查询余额</button>
+            <div class="balance-info" id="balanceInfo" style="display:none;"></div>
           </div>
 
           <div class="form-group">
@@ -165,6 +171,14 @@
             </div>
             <input type="file" id="imageInput" accept="image/*" multiple hidden>
             <div class="image-preview" id="imagePreview"></div>
+            <div style="margin-top:12px;">
+              <label style="margin-bottom:6px;">或粘贴图片 URL（大图推荐，自动并入参考图）</label>
+              <div class="api-key-row">
+                <input type="text" id="imageUrl" placeholder="https://example.com/ref.png">
+                <button class="btn btn-outline" type="button" onclick="addImageUrl()" style="padding:11px 14px;">＋</button>
+              </div>
+              <div class="field-hint">支持上传本地图（转 base64）与粘贴 URL 两种方式混用。</div>
+            </div>
           </div>
 
           <div class="row">
@@ -197,6 +211,12 @@
               <option value="2K">2K</option>
               <option value="4K">4K</option>
             </select>
+          </div>
+
+          <div class="form-group">
+            <label>时长（秒）</label>
+            <input type="number" id="duration" min="1" max="60" placeholder="留空=图片；填值可生成视频">
+            <div class="field-hint">仅视频模型/视频生成时生效，单位秒（1–60）。</div>
           </div>
 
           <button class="btn btn-primary" id="generateBtn" onclick="generate()">✨ 生成图片</button>
@@ -311,6 +331,52 @@
       renderPreview();
     }
 
+    function addImageUrl() {
+      const input = document.getElementById('imageUrl');
+      const v = input.value.trim();
+      if (!v) { showError('请先粘贴图片 URL'); input.focus(); return; }
+      showToast('已记录图片 URL，生成时将作为参考图');
+    }
+
+    function formatBalance(data) {
+      if (typeof data === 'number') return data + ' 积分';
+      const keys = ['credits', 'balance', 'remaining', 'quota', 'amount', 'credit'];
+      const dig = (o) => {
+        if (!o || typeof o !== 'object') return null;
+        for (const k of keys) if (typeof o[k] === 'number') return o[k];
+        for (const k in o) { if (typeof o[k] === 'object') { const r = dig(o[k]); if (r !== null) return r; } }
+        return null;
+      };
+      const v = dig(data);
+      return v !== null ? v + ' 积分' : (typeof data === 'string' ? data : JSON.stringify(data).slice(0, 200));
+    }
+
+    async function checkBalance() {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      if (!apiKey) { showError('请先填写 API Key'); document.getElementById('apiKey').focus(); return; }
+      const baseUrl = getBaseUrl();
+      const info = document.getElementById('balanceInfo');
+      info.style.display = 'block';
+      info.style.color = 'var(--text-secondary)';
+      info.style.background = '#f0f0f5';
+      info.textContent = '查询中…';
+      try {
+        const res = await fetch(`${baseUrl}/client/openapi/getAPIKeyCredits`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await res.json();
+        info.style.color = '#2e7d32';
+        info.style.background = '#e8f5e9';
+        info.textContent = '💰 积分余额：' + formatBalance(data);
+      } catch (err) {
+        info.style.color = 'var(--danger)';
+        info.style.background = '#fff2f2';
+        info.textContent = '查询失败：' + err.message;
+      }
+    }
+
     function restoreSettings() {
       const k = localStorage.getItem('nb_apikey'); if (k) document.getElementById('apiKey').value = k;
       const b = localStorage.getItem('nb_baseurl') || 'https://grsaiapi.com';
@@ -336,6 +402,8 @@
         if (p.model) document.getElementById('model').value = p.model;
         if (p.ar) document.getElementById('aspectRatio').value = p.ar;
         if (p.size) document.getElementById('imageSize').value = p.size;
+        if (p.duration) document.getElementById('duration').value = p.duration;
+        if (p.imageUrl) document.getElementById('imageUrl').value = p.imageUrl;
       } catch (e) {}
     }
     function getBaseUrl() {
@@ -370,13 +438,15 @@
       const model = document.getElementById('model').value;
       const aspectRatio = document.getElementById('aspectRatio').value;
       const imageSize = document.getElementById('imageSize').value;
+      const duration = document.getElementById('duration').value.trim();
       const baseUrl = getBaseUrl();
-      const images = mode === 'image' ? uploadedImages : [];
+      const imageUrl = document.getElementById('imageUrl').value.trim();
+      const images = mode === 'image' ? [...uploadedImages, ...(imageUrl ? [imageUrl] : [])] : [];
 
       if (!apiKey) { showError('请先填写你的 API Key'); document.getElementById('apiKey').focus(); return; }
       if (!baseUrl) { showError('请选择有效的节点'); return; }
       if (mode === 'text' && !prompt) { showError('请输入图片描述'); document.getElementById('prompt').focus(); return; }
-      if (mode === 'image' && images.length === 0) { showError('请先上传参考图'); document.getElementById('dropzone').scrollIntoView({behavior:'smooth'}); return; }
+      if (mode === 'image' && images.length === 0) { showError('请先上传或粘贴参考图'); document.getElementById('dropzone').scrollIntoView({behavior:'smooth'}); return; }
 
       localStorage.setItem('nb_apikey', apiKey);
       localStorage.setItem('nb_baseurl', baseUrl);
@@ -385,6 +455,7 @@
       const url = `${baseUrl}/v1/api/generate`;
       const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
       const body = { model, prompt, images, aspectRatio, imageSize, replyType: 'json' };
+      if (duration) body.duration = Number(duration);
 
       setLoading(true);
       try {
@@ -453,7 +524,9 @@
         prompt: document.getElementById('prompt').value.trim(),
         model: document.getElementById('model').value,
         ar: document.getElementById('aspectRatio').value,
-        size: document.getElementById('imageSize').value
+        size: document.getElementById('imageSize').value,
+        duration: document.getElementById('duration').value.trim(),
+        imageUrl: document.getElementById('imageUrl').value.trim()
       };
       if (!params.prompt) { showError('先输入描述词再分享'); document.getElementById('prompt').focus(); return; }
       const link = `${location.origin}${location.pathname}#${encodeURIComponent(JSON.stringify(params))}`;
