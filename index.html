@@ -83,7 +83,6 @@
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     .response-info { margin-top: 14px; font-size: 12px; color: var(--text-secondary); word-break: break-all; text-align: center; }
-    .secure-note { font-size: 12px; color: var(--text-secondary); background: #f0f0f5; padding: 8px 12px; border-radius: 8px; margin-top: 8px; line-height: 1.5; }
 
     .history { margin-top: 22px; }
     .history-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
@@ -93,10 +92,6 @@
     .history-item .hint { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .section-actions { display: flex; gap: 10px; margin-top: 14px; }
-    .section-actions .btn { flex: 1; font-size: 13px; }
-
-    .footer-note { text-align: center; margin-top: 40px; color: var(--text-secondary); font-size: 12px; }
-    .footer-note a { color: var(--accent); text-decoration: none; }
   </style>
 </head>
 <body>
@@ -114,7 +109,7 @@
       <!-- 左：输入区 -->
       <div>
         <div class="card">
-          <div class="card-title">🎛 创作参数</div>
+          <div class="card-title">📋 创作参数</div>
 
           <div class="form-group">
             <label>你的 API Key</label>
@@ -122,14 +117,13 @@
               <input type="password" id="apiKey" placeholder="sk-xxxxxxxxxxx" autocomplete="off">
               <button class="btn btn-outline" id="toggleKeyBtn" type="button" title="显示/隐藏" style="padding:11px 14px;">👁</button>
             </div>
-            <div class="secure-note">🔒 Key 仅保存在你本机浏览器，不会上传到任何服务器。</div>
           </div>
 
           <div class="form-group">
             <label>节点</label>
             <select id="baseUrl">
+              <option value="https://grsaiapi.com" selected>🌍 全球节点 (grsaiapi.com)</option>
               <option value="https://grsai.dakka.com.cn">🇨🇳 国内节点 (dakka.com.cn)</option>
-              <option value="https://grsaiapi.com">🌍 全球节点 (grsaiapi.com)</option>
               <option value="custom">⚙️ 自定义</option>
             </select>
             <input type="text" id="customBaseUrl" placeholder="https://your-url.com" style="display:none; margin-top:8px;">
@@ -146,7 +140,8 @@
             <div class="form-group">
               <label>模型</label>
               <select id="model">
-                <option value="nano-banana-2" selected>nano-banana-2</option>
+                <option value="nano-banana-pro" selected>nano-banana-pro</option>
+                <option value="nano-banana-2">nano-banana-2</option>
                 <option value="nano-banana">nano-banana</option>
               </select>
             </div>
@@ -205,9 +200,6 @@
       </div>
     </div>
 
-    <div class="footer-note">
-      Powered by <a href="https://grsaiapi.com" target="_blank" rel="noopener">Grsai API</a> · Key 仅存本地，请各自使用自己的 Key
-    </div>
   </div>
 
   <script>
@@ -248,7 +240,7 @@
 
     function restoreSettings() {
       const k = localStorage.getItem('nb_apikey'); if (k) document.getElementById('apiKey').value = k;
-      const b = localStorage.getItem('nb_baseurl') || 'https://grsai.dakka.com.cn';
+      const b = localStorage.getItem('nb_baseurl') || 'https://grsaiapi.com';
       const sel = document.getElementById('baseUrl');
       if (b === 'https://grsai.dakka.com.cn' || b === 'https://grsaiapi.com') sel.value = b;
       else { sel.value = 'custom'; document.getElementById('customBaseUrl').style.display = 'block'; document.getElementById('customBaseUrl').value = b; }
