@@ -361,28 +361,41 @@
       info.style.background = '#f0f0f5';
       info.textContent = '查询中…';
       const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+      const ok = (d) => {
+        if (!d || typeof d !== 'object') return false;
+        if (typeof d.code === 'number' && d.code !== 0) return false; // 明确失败
+        const txt = formatBalance(d);
+        return /[0-9]/.test(txt); // 成功：能解析出数字余额
+      };
       try {
-        // 先试文档指定的 getAPIKeyCredits
-        let res = await fetch(`${baseUrl}/client/openapi/getAPIKeyCredits`, { method: 'POST', headers, body: JSON.stringify({}) });
-        let data = await res.json();
-        // 失败则回退到已验证可用的 getCredits（账户余额）
-        if (typeof data.code === 'number' && data.code !== 0) {
-          const res2 = await fetch(`${baseUrl}/client/openapi/getCredits`, { method: 'POST', headers, body: JSON.stringify({}) });
-          const data2 = await res2.json();
-          if (typeof data2.code === 'number' && data2.code === 0) data = data2;
-        }
-        if (typeof data.code === 'number' && data.code !== 0) {
-          info.style.color = 'var(--danger)';
-          info.style.background = '#fff2f2';
-          info.textContent = '查询失败：' + (data.msg || JSON.stringify(data).slice(0, 120));
+        // ① 文档接口：按 apikey 查询真实余额（GET，apikey 走查询参数）
+        const res1 = await fetch(`${baseUrl}/client/common/getCredits?apikey=${encodeURIComponent(apiKey)}`, { method: 'GET', headers });
+        const d1 = await res1.json().catch(() => ({}));
+        if (ok(d1)) {
+          info.style.color = '#2e7d32'; info.style.background = '#e8f5e9';
+          info.textContent = '💰 该 API Key 余额：' + formatBalance(d1);
           return;
         }
-        info.style.color = '#2e7d32';
-        info.style.background = '#e8f5e9';
-        info.textContent = '💰 积分余额：' + formatBalance(data);
+        // ② 回退：openapi 按 Key 查（apikey 放请求体）
+        const res2 = await fetch(`${baseUrl}/client/openapi/getAPIKeyCredits`, { method: 'POST', headers, body: JSON.stringify({ apikey: apiKey }) });
+        const d2 = await res2.json().catch(() => ({}));
+        if (ok(d2)) {
+          info.style.color = '#2e7d32'; info.style.background = '#e8f5e9';
+          info.textContent = '💰 该 API Key 余额：' + formatBalance(d2);
+          return;
+        }
+        // ③ 最终回退：账户级余额（可能与单 Key 不一致，明确标注）
+        const res3 = await fetch(`${baseUrl}/client/openapi/getCredits`, { method: 'POST', headers, body: JSON.stringify({}) });
+        const d3 = await res3.json().catch(() => ({}));
+        if (ok(d3)) {
+          info.style.color = '#b26a00'; info.style.background = '#fff8e1';
+          info.textContent = '⚠️ 仅查到账户余额（非单 Key）：' + formatBalance(d3);
+          return;
+        }
+        info.style.color = 'var(--danger)'; info.style.background = '#fff2f2';
+        info.textContent = '查询失败：' + ((d1.msg || d2.msg || d3.msg) || '所有余额接口均无有效返回');
       } catch (err) {
-        info.style.color = 'var(--danger)';
-        info.style.background = '#fff2f2';
+        info.style.color = 'var(--danger)'; info.style.background = '#fff2f2';
         info.textContent = '查询失败：' + err.message;
       }
     }
