@@ -367,6 +367,12 @@
           body: JSON.stringify({})
         });
         const data = await res.json();
+        if (typeof data.code === 'number' && data.code !== 0) {
+          info.style.color = 'var(--danger)';
+          info.style.background = '#fff2f2';
+          info.textContent = '查询失败：' + (data.msg || JSON.stringify(data).slice(0, 120));
+          return;
+        }
         info.style.color = '#2e7d32';
         info.style.background = '#e8f5e9';
         info.textContent = '💰 积分余额：' + formatBalance(data);
