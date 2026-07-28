@@ -92,6 +92,23 @@
     .history-item .hint { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; padding: 3px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     .section-actions { display: flex; gap: 10px; margin-top: 14px; }
+    .section-actions .btn { flex: 1; font-size: 13px; }
+
+    /* 模式切换 */
+    .mode-tabs { display: flex; gap: 6px; background: #f0f0f5; padding: 4px; border-radius: 12px; margin-bottom: 18px; }
+    .mode-tab { flex: 1; padding: 10px; border: none; background: transparent; border-radius: 9px; font-size: 14px; font-weight: 600; color: var(--text-secondary); cursor: pointer; transition: var(--transition); font-family: inherit; }
+    .mode-tab.active { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+    /* 图片上传 */
+    .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 26px 16px; text-align: center; cursor: pointer; transition: var(--transition); background: #fafafa; }
+    .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: rgba(0,113,227,0.04); }
+    .dropzone-hint { color: var(--text-secondary); font-size: 13px; }
+    .dropzone-hint .icon { font-size: 30px; display: block; margin-bottom: 6px; opacity: 0.5; }
+    .image-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .image-preview .thumb { position: relative; width: 66px; height: 66px; border-radius: 9px; overflow: hidden; border: 1px solid var(--border); }
+    .image-preview .thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .image-preview .thumb .remove { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; border: none; font-size: 12px; cursor: pointer; line-height: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
+
   </style>
 </head>
 <body>
@@ -110,6 +127,11 @@
       <div>
         <div class="card">
           <div class="card-title">📋 创作参数</div>
+
+          <div class="mode-tabs">
+            <button class="mode-tab active" id="tabText" onclick="setMode('text')">📝 文生图</button>
+            <button class="mode-tab" id="tabImage" onclick="setMode('image')">🖼 图生图</button>
+          </div>
 
           <div class="form-group">
             <label>你的 API Key</label>
@@ -134,6 +156,15 @@
           <div class="form-group">
             <label>描述词 (Prompt)</label>
             <textarea id="prompt" placeholder="例如：生成一张边牧与古牧正在抖音直播间直播带货截图"></textarea>
+          </div>
+
+          <div class="form-group" id="imageUploadGroup" style="display:none;">
+            <label>参考图（图生图模式下上传，可多张）</label>
+            <div class="dropzone" id="dropzone" onclick="document.getElementById('imageInput').click()">
+              <div class="dropzone-hint"><span class="icon">📤</span>点击或拖拽图片到此处上传</div>
+            </div>
+            <input type="file" id="imageInput" accept="image/*" multiple hidden>
+            <div class="image-preview" id="imagePreview"></div>
           </div>
 
           <div class="row">
@@ -204,6 +235,8 @@
 
   <script>
     let history = JSON.parse(localStorage.getItem('nb_history') || '[]');
+    let mode = 'text';
+    let uploadedImages = [];
     const RANDOM_PROMPTS = [
       '赛博朋克风格的未来城市夜景，霓虹灯反射在湿漉漉的街道上',
       '一只戴草帽的橘猫在向日葵花田里写生，水彩插画风',
@@ -236,7 +269,47 @@
         if (e.target.value !== 'custom') localStorage.setItem('nb_baseurl', e.target.value);
       });
       document.getElementById('customBaseUrl').addEventListener('change', e => localStorage.setItem('nb_baseurl', e.target.value));
+
+      // 图生图：拖拽 / 选择上传
+      const dz = document.getElementById('dropzone');
+      const imgInput = document.getElementById('imageInput');
+      dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+      dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+      dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+      imgInput.addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
     });
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById('tabText').classList.toggle('active', m === 'text');
+      document.getElementById('tabImage').classList.toggle('active', m === 'image');
+      document.getElementById('imageUploadGroup').style.display = m === 'image' ? 'block' : 'none';
+      document.getElementById('prompt').placeholder = m === 'image'
+        ? '描述你想对参考图做的修改，例如：把背景换成星空、转成水彩风格'
+        : '例如：生成一张边牧与古牧正在抖音直播间直播带货截图';
+    }
+
+    function handleFiles(files) {
+      Array.from(files).forEach(file => {
+        if (!file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = () => { uploadedImages.push(reader.result); renderPreview(); };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderPreview() {
+      document.getElementById('imagePreview').innerHTML = uploadedImages.map((src, i) => `
+        <div class="thumb">
+          <img src="${src}" alt="">
+          <button class="remove" onclick="removeImage(${i})" title="移除">×</button>
+        </div>`).join('');
+    }
+
+    function removeImage(i) {
+      uploadedImages.splice(i, 1);
+      renderPreview();
+    }
 
     function restoreSettings() {
       const k = localStorage.getItem('nb_apikey'); if (k) document.getElementById('apiKey').value = k;
@@ -298,10 +371,12 @@
       const aspectRatio = document.getElementById('aspectRatio').value;
       const imageSize = document.getElementById('imageSize').value;
       const baseUrl = getBaseUrl();
+      const images = mode === 'image' ? uploadedImages : [];
 
       if (!apiKey) { showError('请先填写你的 API Key'); document.getElementById('apiKey').focus(); return; }
       if (!baseUrl) { showError('请选择有效的节点'); return; }
-      if (!prompt) { showError('请输入图片描述'); document.getElementById('prompt').focus(); return; }
+      if (mode === 'text' && !prompt) { showError('请输入图片描述'); document.getElementById('prompt').focus(); return; }
+      if (mode === 'image' && images.length === 0) { showError('请先上传参考图'); document.getElementById('dropzone').scrollIntoView({behavior:'smooth'}); return; }
 
       localStorage.setItem('nb_apikey', apiKey);
       localStorage.setItem('nb_baseurl', baseUrl);
@@ -309,7 +384,7 @@
 
       const url = `${baseUrl}/v1/api/generate`;
       const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-      const body = { model, prompt, images: [], aspectRatio, imageSize, replyType: 'json' };
+      const body = { model, prompt, images, aspectRatio, imageSize, replyType: 'json' };
 
       setLoading(true);
       try {
