@@ -263,13 +263,14 @@
 
   <script>
     const APP_VERSION = '20260729-0930';
-    // 版本检测：从 CDN 拉取最新版本号（带时间戳绕过缓存），不一致则强制刷新
+    // 版本检测：拉取最新版本号，不一致则跳转到带版本号的 URL（新 URL = 新缓存键 = 强制刷新）
     (function checkVersion() {
       fetch('version.txt?t=' + Date.now(), { cache: 'no-store' })
         .then(r => r.ok ? r.text() : null)
         .then(txt => {
-          if (txt && txt.trim() && txt.trim() !== APP_VERSION) {
-            location.reload(true);
+          const v = txt && txt.trim();
+          if (v && v !== APP_VERSION && location.search.indexOf('v=' + v) === -1) {
+            location.replace(location.origin + location.pathname + '?v=' + v);
           }
         })
         .catch(() => {});
@@ -576,7 +577,7 @@
         imageUrl: document.getElementById('imageUrl').value.trim()
       };
       if (!params.prompt) { showError('先输入描述词再分享'); document.getElementById('prompt').focus(); return; }
-      const link = `${location.origin}${location.pathname}#${encodeURIComponent(JSON.stringify(params))}`;
+      const link = `${location.origin}${location.pathname}?v=${APP_VERSION}#${encodeURIComponent(JSON.stringify(params))}`;
       navigator.clipboard.writeText(link).then(() => showToast('分享链接已复制！')).catch(() => {
         const ta = document.createElement('textarea'); ta.value = link; document.body.appendChild(ta); ta.select();
         document.execCommand('copy'); document.body.removeChild(ta); showToast('分享链接已复制！');
@@ -621,7 +622,7 @@
       }
     }
     function showQR() {
-      const url = location.href;
+      const url = location.origin + location.pathname + '?v=' + APP_VERSION;
       const modal = document.getElementById('qrModal');
       const box = document.getElementById('qrCode');
       box.innerHTML = '';
