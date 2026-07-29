@@ -25,6 +25,7 @@
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
       margin-bottom: 6px;
     }
+    .ver-badge { display: inline-block; font-size: 11px; font-weight: 600; color: #0071e3; background: rgba(0,113,227,0.1); padding: 2px 8px; border-radius: 10px; vertical-align: middle; margin-left: 6px; }
     .header p { color: var(--text-secondary); font-size: 15px; }
 
     .layout { display: grid; grid-template-columns: 420px 1fr; gap: 28px; align-items: start; }
@@ -126,7 +127,7 @@
 
     <div class="header">
       <h1>Nano Banana</h1>
-      <p>AI 图片生成器 — 填入你自己的 API Key，描述一句话即可生成</p>
+      <p>AI 图片生成器 — 填入你自己的 API Key，描述一句话即可生成 <span class="ver-badge" id="verBadge">v...</span></p>
     </div>
 
     <div class="error-msg" id="errorMsg"></div>
@@ -261,7 +262,21 @@
   </div>
 
   <script>
+    const APP_VERSION = '20260729-0930';
+    // 版本检测：从 CDN 拉取最新版本号（带时间戳绕过缓存），不一致则强制刷新
+    (function checkVersion() {
+      fetch('version.txt?t=' + Date.now(), { cache: 'no-store' })
+        .then(r => r.ok ? r.text() : null)
+        .then(txt => {
+          if (txt && txt.trim() && txt.trim() !== APP_VERSION) {
+            location.reload(true);
+          }
+        })
+        .catch(() => {});
+    })();
+
     let history = JSON.parse(localStorage.getItem('nb_history') || '[]');
+    const _vb = document.getElementById('verBadge'); if (_vb) _vb.textContent = 'v' + APP_VERSION;
     let mode = 'text';
     let uploadedImages = [];
     const RANDOM_PROMPTS = [
