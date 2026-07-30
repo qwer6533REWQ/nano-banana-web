@@ -71,17 +71,21 @@
     .dropzone .ic { font-size: 28px; opacity: .45; display: block; margin-bottom: 6px; }
     .dropzone .tx { color: var(--sub); font-size: 12px; }
 
-    .previews { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
-    .thumb { position: relative; width: 96px; height: 96px; border-radius: 12px; overflow: hidden;
-      border: 2px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,.06); background: #f3f4f6; }
-    .thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .thumb .badge { position: absolute; top: 5px; left: 5px; padding: 3px 8px; border-radius: 6px; font-size: 11px;
+    .previews { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+    .img-card { position: relative; display: flex; gap: 12px; align-items: center; padding: 10px;
+      border: 1px solid var(--border); border-radius: 12px; background: #fbfbfc; }
+    .img-card .tw { position: relative; width: 62px; height: 62px; border-radius: 9px; overflow: hidden; flex-shrink: 0; background: #eef0f3; }
+    .img-card .tw img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .img-card .badge { position: absolute; top: 3px; left: 3px; padding: 2px 6px; border-radius: 5px; font-size: 10px;
       font-weight: 800; color: #fff; background: linear-gradient(135deg, #4f46e5, #7c3aed); line-height: 1.2;
-      letter-spacing: .3px; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
-    .thumb .rm { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%;
-      background: rgba(239,68,68,.9); color: #fff; border: none; font-size: 13px; cursor: pointer; line-height: 1;
+      letter-spacing: .3px; box-shadow: 0 1px 4px rgba(0,0,0,.3); z-index: 2; }
+    .img-card .meta { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .img-card .name { font-size: 12px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .img-card .idx { font-size: 11px; color: var(--accent); font-weight: 700; margin-right: auto; padding-left: 2px; }
+    .img-card .rm { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+      background: rgba(239,68,68,.9); color: #fff; border: none; font-size: 15px; cursor: pointer; line-height: 1;
       display: flex; align-items: center; justify-content: center; transition: transform .15s; }
-    .thumb .rm:hover { transform: scale(1.12); background: #dc2626; }
+    .img-card .rm:hover { transform: scale(1.12); background: #dc2626; }
 
     .balance { margin-top: 10px; font-size: 12px; font-weight: 600; padding: 9px 12px; border-radius: 8px; word-break: break-all; display: none; }
     .hint { font-size: 11px; color: var(--sub); margin-top: 4px; line-height: 1.4; }
@@ -259,7 +263,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260729-0945';
+    const APP_VERSION = '20260730-0944';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -277,6 +281,7 @@
     let history = JSON.parse(localStorage.getItem('nb_history') || '[]');
     let mode = 'text';
     let uploadedImages = [];
+    let genStart = 0;
     const RANDOM_PROMPTS = [
       '赛博朋克风格的未来城市夜景，霓虹灯反射在湿漉漉的街道上',
       '一只戴草帽的橘猫在向日葵花田里写生，水彩插画风',
@@ -320,23 +325,29 @@
         : '例如：生成一张边牧与古牧正在抖音直播间直播带货截图';
     }
 
+    function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function handleFiles(files) {
       Array.from(files).forEach(file => {
         if (!file.type.startsWith('image/')) return;
         const reader = new FileReader();
-        reader.onload = () => { uploadedImages.push(reader.result); renderPreview(); };
+        reader.onload = () => { uploadedImages.push({ src: reader.result, name: file.name }); renderPreview(); };
         reader.readAsDataURL(file);
       });
     }
 
     function renderPreview() {
-      const labels = ['图一', '图二', '图三', '图四', '图五'];
-      document.getElementById('imagePreview').innerHTML = uploadedImages.map((src, i) => `
-        <div class="thumb">
-          <span class="badge">${labels[i] || '图' + (i + 1)}</span>
-          <img src="${src}" alt="">
-          <button class="rm" onclick="removeImage(${i})" title="移除">×</button>
-        </div>`).join('');
+      const labels = ['图一', '图二', '图三', '图四', '图五', '图六', '图七', '图八', '图九', '图十'];
+      const cards = uploadedImages.map((img, i) => {
+        const label = labels[i] || ('图' + (i + 1));
+        return `<div class="img-card">
+          <div class="tw"><span class="badge">${label}</span><img src="${img.src}" alt=""></div>
+          <div class="meta">
+            <span class="name">${esc(img.name || label)}</span>
+            <button class="rm" onclick="removeImage(${i})" title="移除">×</button>
+          </div>
+        </div>`;
+      });
+      document.getElementById('imagePreview').innerHTML = cards.join('');
     }
 
     function removeImage(i) {
@@ -348,7 +359,10 @@
       const input = document.getElementById('imageUrl');
       const v = input.value.trim();
       if (!v) { showError('请先粘贴图片 URL'); input.focus(); return; }
-      showToast('已记录图片 URL，生成时将作为参考图');
+      uploadedImages.push({ src: v, name: v });
+      input.value = '';
+      renderPreview();
+      showToast('已添加图片 URL 作为参考图');
     }
 
     function formatBalance(data) {
@@ -427,7 +441,9 @@
         if (p.ar) document.getElementById('aspectRatio').value = p.ar;
         if (p.size) document.getElementById('imageSize').value = p.size;
         if (p.duration) document.getElementById('duration').value = p.duration;
-        if (p.imageUrl) document.getElementById('imageUrl').value = p.imageUrl;
+        if (p.imageUrl) { uploadedImages.push({ src: p.imageUrl, name: p.imageUrl }); document.getElementById('imageUrl').value = ''; }
+        if (Array.isArray(p.images)) p.images.forEach(src => uploadedImages.push({ src, name: src }));
+        if (uploadedImages.length) { renderPreview(); setMode('image'); }
       } catch (e) {}
     }
     function getBaseUrl() { return 'https://grsaiapi.com'; }
@@ -459,8 +475,7 @@
       const imageSize = document.getElementById('imageSize').value;
       const duration = document.getElementById('duration').value.trim();
       const baseUrl = getBaseUrl();
-      const imageUrl = document.getElementById('imageUrl').value.trim();
-      const images = mode === 'image' ? [...uploadedImages, ...(imageUrl ? [imageUrl] : [])] : [];
+      const images = mode === 'image' ? uploadedImages.map(x => x.src) : [];
 
       if (!apiKey) { showError('请先填写你的 API Key'); document.getElementById('apiKey').focus(); return; }
       if (mode === 'text' && !prompt) { showError('请输入图片描述'); document.getElementById('prompt').focus(); return; }
@@ -475,6 +490,7 @@
       if (duration) body.duration = Number(duration);
 
       setLoading(true);
+      genStart = Date.now();
       try {
         const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
         let data; try { data = await res.json(); } catch (e) { data = {}; }
@@ -523,7 +539,9 @@
         </div>`).join('');
       grid.style.display = 'grid';
       const info = document.getElementById('responseInfo');
-      info.innerHTML = `任务 ID: ${data.id || 'N/A'} · <span style="color:var(--ok);font-weight:600;">✓ 成功</span> · ${urls.length} 张`;
+      const sec = genStart ? ((Date.now() - genStart) / 1000).toFixed(1) : null;
+      info.innerHTML = `任务 ID: ${data.id || 'N/A'} · <span style="color:var(--ok);font-weight:600;">✓ 成功</span> · ${urls.length} 张` +
+        (sec ? ` · ⏱ 耗时 ${sec}s` : '');
       info.style.display = 'block';
     }
     function downloadImg(u) {
@@ -543,7 +561,7 @@
         ar: document.getElementById('aspectRatio').value,
         size: document.getElementById('imageSize').value,
         duration: document.getElementById('duration').value.trim(),
-        imageUrl: document.getElementById('imageUrl').value.trim()
+        images: uploadedImages.map(x => x.src)
       };
       if (!params.prompt) { showError('先输入描述词再分享'); document.getElementById('prompt').focus(); return; }
       const link = `${location.origin}${location.pathname}?v=${APP_VERSION}#${encodeURIComponent(JSON.stringify(params))}`;
