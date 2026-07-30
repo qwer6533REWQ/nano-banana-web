@@ -86,6 +86,13 @@
       background: rgba(239,68,68,.9); color: #fff; border: none; font-size: 15px; cursor: pointer; line-height: 1;
       display: flex; align-items: center; justify-content: center; transition: transform .15s; }
     .img-card .rm:hover { transform: scale(1.12); background: #dc2626; }
+    .img-card .drag-h { flex-shrink: 0; width: 22px; height: 30px; display: flex; align-items: center; justify-content: center;
+      cursor: grab; color: var(--sub); font-size: 17px; border-radius: 6px; touch-action: none; user-select: none;
+      transition: background .15s, color .15s; }
+    .img-card .drag-h:hover { background: rgba(79,70,229,.1); color: var(--accent); }
+    .img-card .drag-h:active { cursor: grabbing; }
+    .img-card.dragging { border-color: var(--accent); background: #fff; box-shadow: 0 6px 20px rgba(79,70,229,.28); transform: scale(1.02); }
+    .img-card.drop-target { border-color: var(--accent); }
 
     .balance { margin-top: 10px; font-size: 12px; font-weight: 600; padding: 9px 12px; border-radius: 8px; word-break: break-all; display: none; }
     .hint { font-size: 11px; color: var(--sub); margin-top: 4px; line-height: 1.4; }
@@ -171,6 +178,7 @@
             </div>
             <input type="file" id="imageInput" accept="image/*" multiple hidden>
             <div class="previews" id="imagePreview"></div>
+            <div class="hint" style="margin-top:6px;">拖动卡片左侧的 ⠿ 手柄可调整参考图顺序（图一、图二…）</div>
             <div style="margin-top:14px;">
               <label style="display:block; font-size:12px; font-weight:700; color:var(--sub); margin-bottom:8px;">或粘贴图片 URL（大图推荐，自动并入参考图）</label>
               <div class="key-row">
@@ -263,7 +271,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260730-0944';
+    const APP_VERSION = '20260730-1002';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -313,6 +321,7 @@
       dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
       dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
       imgInput.addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
+      setupImageDrag();
     });
 
     function setMode(m) {
@@ -339,7 +348,8 @@
       const labels = ['图一', '图二', '图三', '图四', '图五', '图六', '图七', '图八', '图九', '图十'];
       const cards = uploadedImages.map((img, i) => {
         const label = labels[i] || ('图' + (i + 1));
-        return `<div class="img-card">
+        return `<div class="img-card" data-idx="${i}">
+          <span class="drag-h" title="拖动调整顺序">⠿</span>
           <div class="tw"><span class="badge">${label}</span><img src="${img.src}" alt=""></div>
           <div class="meta">
             <span class="name">${esc(img.name || label)}</span>
@@ -353,6 +363,50 @@
     function removeImage(i) {
       uploadedImages.splice(i, 1);
       renderPreview();
+    }
+
+    // 拖动「⠿」手柄可交换参考图顺序（指针事件，桌面与触屏均支持）
+    let _drag = null;
+    function setupImageDrag() {
+      const c = document.getElementById('imagePreview');
+      const moveInArray = (from, to) => {
+        if (from === to) return;
+        const item = uploadedImages.splice(from, 1)[0];
+        uploadedImages.splice(to, 0, item);
+      };
+      c.addEventListener('pointerdown', e => {
+        const h = e.target.closest('.drag-h');
+        if (!h) return;
+        const card = h.closest('.img-card');
+        _drag = { idx: +card.dataset.idx };
+        card.classList.add('dragging');
+        try { c.setPointerCapture(e.pointerId); } catch (_) {}
+        e.preventDefault();
+      });
+      c.addEventListener('pointermove', e => {
+        if (!_drag) return;
+        const cards = [...c.querySelectorAll('.img-card')];
+        const y = e.clientY;
+        let target = cards.length - 1;
+        for (let i = 0; i < cards.length; i++) {
+          const r = cards[i].getBoundingClientRect();
+          if (y < r.top + r.height / 2) { target = i; break; }
+        }
+        if (target !== _drag.idx) {
+          moveInArray(_drag.idx, target);
+          _drag.idx = target;
+          renderPreview();
+          const cur = c.querySelector(`.img-card[data-idx="${target}"]`);
+          if (cur) cur.classList.add('dragging');
+        }
+      });
+      const end = () => {
+        if (!_drag) return;
+        _drag = null;
+        c.querySelectorAll('.img-card').forEach(el => el.classList.remove('dragging'));
+      };
+      c.addEventListener('pointerup', end);
+      c.addEventListener('pointercancel', end);
     }
 
     function addImageUrl() {
