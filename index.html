@@ -73,7 +73,14 @@
 
     .previews { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
     .img-card { position: relative; display: flex; gap: 12px; align-items: center; padding: 10px;
-      border: 1px solid var(--border); border-radius: 12px; background: #fbfbfc; }
+      border: 1px solid var(--border); border-radius: 12px; background: #fbfbfc; cursor: grab; user-select: none; }
+    .img-card:active { cursor: grabbing; }
+    .img-card .ctrls { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+    .img-card .mv { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border); background: #fff;
+      color: var(--accent); font-size: 13px; cursor: pointer; line-height: 1; display: flex; align-items: center; justify-content: center;
+      transition: transform .15s, background .15s; }
+    .img-card .mv:hover:not(:disabled) { background: rgba(79,70,229,.1); transform: scale(1.1); }
+    .img-card .mv:disabled { opacity: .3; cursor: default; }
     .img-card .tw { position: relative; width: 62px; height: 62px; border-radius: 9px; overflow: hidden; flex-shrink: 0; background: #eef0f3; }
     .img-card .tw img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .img-card .badge { position: absolute; top: 3px; left: 3px; padding: 2px 6px; border-radius: 5px; font-size: 10px;
@@ -271,7 +278,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260730-1002';
+    const APP_VERSION = '20260730-1035';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -348,12 +355,18 @@
       const labels = ['图一', '图二', '图三', '图四', '图五', '图六', '图七', '图八', '图九', '图十'];
       const cards = uploadedImages.map((img, i) => {
         const label = labels[i] || ('图' + (i + 1));
+        const disUp = i === 0 ? 'disabled' : '';
+        const disDn = i === uploadedImages.length - 1 ? 'disabled' : '';
         return `<div class="img-card" data-idx="${i}">
           <span class="drag-h" title="拖动调整顺序">⠿</span>
-          <div class="tw"><span class="badge">${label}</span><img src="${img.src}" alt=""></div>
+          <div class="tw"><span class="badge">${label}</span><img src="${img.src}" alt="" draggable="false" ondragstart="return false;"></div>
           <div class="meta">
             <span class="name">${esc(img.name || label)}</span>
-            <button class="rm" onclick="removeImage(${i})" title="移除">×</button>
+            <span class="ctrls">
+              <button class="mv" onclick="moveImage(${i},-1)" title="上移" ${disUp}>↑</button>
+              <button class="mv" onclick="moveImage(${i},1)" title="下移" ${disDn}>↓</button>
+              <button class="rm" onclick="removeImage(${i})" title="移除">×</button>
+            </span>
           </div>
         </div>`;
       });
@@ -365,7 +378,7 @@
       renderPreview();
     }
 
-    // 拖动「⠿」手柄可交换参考图顺序（指针事件，桌面与触屏均支持）
+    // 拖动整张卡片可交换参考图顺序（指针事件，桌面与触屏均支持）
     let _drag = null;
     function setupImageDrag() {
       const c = document.getElementById('imagePreview');
@@ -374,14 +387,15 @@
         const item = uploadedImages.splice(from, 1)[0];
         uploadedImages.splice(to, 0, item);
       };
+      const cardOf = el => el && el.closest ? el.closest('.img-card') : null;
       c.addEventListener('pointerdown', e => {
-        const h = e.target.closest('.drag-h');
-        if (!h) return;
-        const card = h.closest('.img-card');
+        if (e.target.closest('.rm')) return;          // 删除按钮不触发拖动
+        const card = cardOf(e.target);
+        if (!card) return;
         _drag = { idx: +card.dataset.idx };
         card.classList.add('dragging');
         try { c.setPointerCapture(e.pointerId); } catch (_) {}
-        e.preventDefault();
+        e.preventDefault();                            // 阻止浏览器原生图片拖拽/文本选中
       });
       c.addEventListener('pointermove', e => {
         if (!_drag) return;
@@ -407,6 +421,15 @@
       };
       c.addEventListener('pointerup', end);
       c.addEventListener('pointercancel', end);
+    }
+
+    // 上移 / 下移（点击按钮，触屏与精确排序的可靠后备）
+    function moveImage(i, dir) {
+      const j = i + dir;
+      if (j < 0 || j >= uploadedImages.length) return;
+      const item = uploadedImages.splice(i, 1)[0];
+      uploadedImages.splice(j, 0, item);
+      renderPreview();
     }
 
     function addImageUrl() {
