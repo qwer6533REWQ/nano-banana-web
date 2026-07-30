@@ -104,6 +104,10 @@
     .balance { margin-top: 10px; font-size: 12px; font-weight: 600; padding: 9px 12px; border-radius: 8px; word-break: break-all; display: none; }
     .hint { font-size: 11px; color: var(--sub); margin-top: 4px; line-height: 1.4; }
     .actions { display: flex; gap: 8px; margin-top: 12px; }
+    .presets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+    .presets .preset { padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: #fff;
+      color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; line-height: 1.3; }
+    .presets .preset:hover { background: rgba(79,70,229,.1); border-color: var(--accent); transform: translateY(-1px); }
 
     .err { display: none; padding: 13px 16px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 11px;
       color: var(--danger); font-size: 13px; margin-bottom: 18px; }
@@ -175,6 +179,12 @@
           <div class="group">
             <label>描述词 (Prompt)</label>
             <textarea id="prompt" placeholder="例如：生成一张边牧与古牧正在抖音直播间直播带货截图"></textarea>
+          </div>
+
+          <div class="group">
+            <label>🎨 换色预设（点击填入提示词，自动切到图生图模式）</label>
+            <div class="presets" id="recolorPresets"></div>
+            <div class="hint">提示词可二次编辑；换色通常需要至少 2 张参考图（图一、图二…），顺序可用 ↑/↓ 或拖动调整。</div>
           </div>
 
           <div class="group" id="imageUploadGroup" style="display:none;">
@@ -278,7 +288,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260730-1035';
+    const APP_VERSION = '20260730-1100';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -329,6 +339,7 @@
       dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
       imgInput.addEventListener('change', e => { handleFiles(e.target.files); e.target.value = ''; });
       setupImageDrag();
+      renderRecolorPresets();
     });
 
     function setMode(m) {
@@ -440,6 +451,37 @@
       input.value = '';
       renderPreview();
       showToast('已添加图片 URL 作为参考图');
+    }
+
+    // 换色预设：内置提示词，点击填入并自动切到图生图模式
+    const RECOLOR_PRESETS = [
+      { label: '主体换色（图一→图二）',
+        prompt: '将图一中的主体替换为图二中主体的颜色，仅替换颜色，保持光影、结构与细节不变，优化噪点，提升清晰度' },
+      { label: '整体配色迁移',
+        prompt: '将图一整体色调与配色方案替换为图二的风格，保持画面内容不变，仅调整颜色，减少噪点，画面更干净' },
+      { label: '背景换色',
+        prompt: '将图一的背景颜色替换为图二的背景色，主体保持不变，仅替换背景颜色，优化噪点' },
+      { label: '局部换色',
+        prompt: '将图一中的目标物体颜色替换为图二中对应物体的颜色，仅替换该物体颜色，平滑过渡，降噪提质' },
+      { label: '单色化（图二主色）',
+        prompt: '将图一转换为仅使用图二主色调的配色，保持结构与光影，去除杂色与噪点' }
+    ];
+    function renderRecolorPresets() {
+      const box = document.getElementById('recolorPresets');
+      if (!box) return;
+      box.innerHTML = RECOLOR_PRESETS.map((p, i) =>
+        `<button type="button" class="preset" onclick="applyPreset(${i})">${esc(p.label)}</button>`).join('');
+    }
+    function applyPreset(i) {
+      const p = RECOLOR_PRESETS[i];
+      if (!p) return;
+      document.getElementById('prompt').value = p.prompt;
+      setMode('image');
+      if (uploadedImages.length < 2) {
+        showToast('提示：换色通常需要至少 2 张参考图（图一、图二）');
+      } else {
+        showToast('已填入换色提示词，可直接生成或微调');
+      }
     }
 
     function formatBalance(data) {
