@@ -288,7 +288,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260730-1100';
+    const APP_VERSION = '20260730-1132';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -307,6 +307,7 @@
     let mode = 'text';
     let uploadedImages = [];
     let genStart = 0;
+    let lastResultUrls = [];
     const RANDOM_PROMPTS = [
       '赛博朋克风格的未来城市夜景，霓虹灯反射在湿漉漉的街道上',
       '一只戴草帽的橘猫在向日葵花田里写生，水彩插画风',
@@ -453,18 +454,18 @@
       showToast('已添加图片 URL 作为参考图');
     }
 
-    // 换色预设：内置提示词，点击填入并自动切到图生图模式
+    // 换色预设：内置提示词，点击填入并自动切到图生图模式（符合 nano-banana 调性：明确编辑指令 + 质量词）
     const RECOLOR_PRESETS = [
       { label: '主体换色（图一→图二）',
-        prompt: '将图一中的主体替换为图二中主体的颜色，仅替换颜色，保持光影、结构与细节不变，优化噪点，提升清晰度' },
+        prompt: '将图一中的主体替换为图二中主体的颜色，仅替换颜色，保持光影、结构与细节不变，优化噪点，提升清晰度。Professional photo color grading, recolor subject only, keep lighting and structure, denoise, 8k, ultra detailed, clean edges, no artifacts.' },
       { label: '整体配色迁移',
-        prompt: '将图一整体色调与配色方案替换为图二的风格，保持画面内容不变，仅调整颜色，减少噪点，画面更干净' },
+        prompt: '将图一整体色调与配色方案替换为图二的风格，保持画面内容不变，仅调整颜色，减少噪点，画面更干净。Overall palette transfer, cinematic color grading, keep composition, reduce noise, clean and smooth, 8k.' },
       { label: '背景换色',
-        prompt: '将图一的背景颜色替换为图二的背景色，主体保持不变，仅替换背景颜色，优化噪点' },
+        prompt: '将图一的背景颜色替换为图二的背景色，主体保持不变，仅替换背景颜色，优化噪点，边缘干净。Background color replacement, keep subject intact, clean edges, denoise, high fidelity, 8k.' },
       { label: '局部换色',
-        prompt: '将图一中的目标物体颜色替换为图二中对应物体的颜色，仅替换该物体颜色，平滑过渡，降噪提质' },
+        prompt: '将图一中的目标物体颜色替换为图二中对应物体的颜色，仅替换该物体颜色，平滑过渡，降噪提质。Selective object recolor, seamless blending, keep everything else unchanged, denoise, sharp details, 8k.' },
       { label: '单色化（图二主色）',
-        prompt: '将图一转换为仅使用图二主色调的配色，保持结构与光影，去除杂色与噪点' }
+        prompt: '将图一转换为仅使用图二主色调的配色，保持结构与光影，去除杂色与噪点，统一色调。Monochrome tint with reference hue, preserve structure and lighting, remove color noise, cohesive tonality, 8k.' }
     ];
     function renderRecolorPresets() {
       const box = document.getElementById('recolorPresets');
@@ -648,28 +649,56 @@
       setLoading(false);
       const grid = document.getElementById('resultGrid');
       const urls = (data.results || []).map(r => r.url).filter(Boolean);
-      grid.innerHTML = urls.map(u => `
+      lastResultUrls = urls;
+      grid.innerHTML = urls.map((u, i) => `
         <div class="item">
           <img src="${u}" alt="结果" loading="lazy" onerror="this.parentElement.innerHTML='<p style=color:#ef4444;padding:30px;text-align:center>图片加载失败</p>'">
           <div class="ov">
-            <button class="btn btn-soft" onclick="downloadImg('${u}')">💾 下载</button>
-            <button class="btn btn-soft" onclick="copyUrl('${u}')">📋 链接</button>
+            <button class="btn btn-soft" onclick="downloadImg(${i})">💾 下载</button>
+            <button class="btn btn-soft" onclick="copyUrl(${i})">📋 链接</button>
           </div>
         </div>`).join('');
       grid.style.display = 'grid';
       const info = document.getElementById('responseInfo');
       const sec = genStart ? ((Date.now() - genStart) / 1000).toFixed(1) : null;
+      let dlAll = urls.length > 1
+        ? ` <button class="btn btn-soft" style="margin-left:8px;padding:3px 10px;font-size:12px;" onclick="downloadAll()">⬇ 全部下载</button>` : '';
       info.innerHTML = `任务 ID: ${data.id || 'N/A'} · <span style="color:var(--ok);font-weight:600;">✓ 成功</span> · ${urls.length} 张` +
-        (sec ? ` · ⏱ 耗时 ${sec}s` : '');
+        (sec ? ` · ⏱ 耗时 ${sec}s` : '') + dlAll;
       info.style.display = 'block';
     }
-    function downloadImg(u) {
-      const a = document.createElement('a');
-      a.href = u; a.download = `nano-banana-${Date.now()}.png`;
-      a.target = '_blank'; a.rel = 'noopener noreferrer';
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    // 一键直接下载：优先 fetch→blob 强制下载，跨域受限时退回新窗口
+    async function downloadImg(i) {
+      const u = lastResultUrls[i];
+      if (!u) return;
+      const fname = `nano-banana-${i + 1}-${Date.now()}.png`;
+      showToast('正在下载…');
+      try {
+        const res = await fetch(u, { mode: 'cors' });
+        if (!res.ok) throw new Error('status ' + res.status);
+        const blob = await res.blob();
+        const obj = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = obj; a.download = fname;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(obj), 5000);
+        showToast('已开始下载 ✓');
+      } catch (e) {
+        const w = window.open(u, '_blank', 'noopener');
+        showToast(w ? '已新窗口打开，可右键保存' : '下载被拦截，请允许弹窗后重试');
+      }
     }
-    function copyUrl(u) {
+    async function downloadAll() {
+      if (!lastResultUrls.length) return;
+      showToast('开始批量下载（' + lastResultUrls.length + ' 张）');
+      for (let i = 0; i < lastResultUrls.length; i++) {
+        await downloadImg(i);
+        await new Promise(r => setTimeout(r, 700));
+      }
+    }
+    function copyUrl(i) {
+      const u = lastResultUrls[i];
+      if (!u) return;
       navigator.clipboard.writeText(u).then(() => showToast('链接已复制')).catch(() => showToast('复制失败'));
     }
 
@@ -715,8 +744,9 @@
     }
     function loadHistory(i) {
       const it = history[i]; if (!it) return;
+      lastResultUrls = [it.url];
       const grid = document.getElementById('resultGrid');
-      grid.innerHTML = `<div class="item"><img src="${it.url}" alt=""><div class="ov"><button class="btn btn-soft" onclick="downloadImg('${it.url}')">💾 下载</button><button class="btn btn-soft" onclick="copyUrl('${it.url}')">📋 链接</button></div></div>`;
+      grid.innerHTML = `<div class="item"><img src="${it.url}" alt=""><div class="ov"><button class="btn btn-soft" onclick="downloadImg(0)">💾 下载</button><button class="btn btn-soft" onclick="copyUrl(0)">📋 链接</button></div></div>`;
       grid.style.display = 'grid';
       document.getElementById('placeholder').style.display = 'none';
       document.getElementById('responseInfo').style.display = 'none';
