@@ -65,6 +65,17 @@
       color: var(--sub); cursor: pointer; transition: var(--t); font-family: inherit; }
     .tab.active { background: #fff; color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
 
+    /* 顶部模型引擎选择 */
+    .engine-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 14px 0 4px;
+      background: linear-gradient(135deg, #f7f7ff, #fff); border: 1px solid var(--border); border-radius: 14px; }
+    .engine-label { font-size: 12px; font-weight: 700; color: var(--sub); white-space: nowrap; }
+    .engine-tabs { display: flex; gap: 6px; flex: 1; background: #eceef1; padding: 4px; border-radius: 11px; }
+    .engine-tab { flex: 1; padding: 10px; border: none; background: transparent; border-radius: 8px; font-size: 13px; font-weight: 700;
+      color: var(--sub); cursor: pointer; transition: var(--t); font-family: inherit; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .engine-tab.active { background: #fff; color: var(--text); box-shadow: 0 1px 5px rgba(0,0,0,.10); }
+    .engine-tab.active.banana { color: #7c3aed; }
+    .engine-tab.active.gpt { color: #0ea5e9; }
+
     .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 22px 14px; text-align: center;
       cursor: pointer; transition: var(--t); background: #fbfbfc; }
     .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: rgba(79,70,229,.04); }
@@ -152,6 +163,14 @@
       <p>填入你自己的 API Key，一句话即可生成图片 · 数据仅存本地</p>
     </div>
 
+    <div class="engine-bar">
+      <span class="engine-label">模型引擎</span>
+      <div class="engine-tabs">
+        <button class="engine-tab banana active" id="engBanana" onclick="setEngine('banana')">🍌 nano-banana</button>
+        <button class="engine-tab gpt" id="engGpt" onclick="setEngine('gpt')">🎨 GPT Image</button>
+      </div>
+    </div>
+
     <div class="err" id="errorMsg"></div>
 
     <div class="layout">
@@ -208,14 +227,8 @@
 
           <div class="row">
             <div class="group">
-              <label>模型</label>
-              <select id="model">
-                <option value="nano-banana-pro" selected>nano-banana-pro</option>
-                <option value="nano-banana-2">nano-banana-2</option>
-                <option value="nano-banana">nano-banana</option>
-                <option value="gpt-image-2">gpt-image-2</option>
-                <option value="gpt-image-2-vip">gpt-image-2-vip</option>
-              </select>
+              <label>模型（随上方引擎切换）</label>
+              <select id="model"></select>
             </div>
             <div class="group">
               <label>画幅</label>
@@ -290,7 +303,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260731-0932';
+    const APP_VERSION = '20260731-1030';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -543,7 +556,10 @@
 
     function restoreSettings() {
       const k = localStorage.getItem('nb_apikey'); if (k) document.getElementById('apiKey').value = k;
-      const m = localStorage.getItem('nb_model'); if (m) document.getElementById('model').value = m;
+      const eng = localStorage.getItem('nb_engine');
+      setEngine(eng === 'gpt' ? 'gpt' : 'banana');
+      const m = localStorage.getItem('nb_model');
+      if (m && ENGINE_MODELS[currentEngine()].some(o => o.value === m)) document.getElementById('model').value = m;
       const ar = localStorage.getItem('nb_ar'); if (ar) document.getElementById('aspectRatio').value = ar;
       const sz = localStorage.getItem('nb_size'); if (sz) document.getElementById('imageSize').value = sz;
     }
@@ -559,7 +575,10 @@
       try {
         const p = JSON.parse(decodeURIComponent(h));
         if (p.prompt) document.getElementById('prompt').value = p.prompt;
-        if (p.model) document.getElementById('model').value = p.model;
+        if (p.model) {
+          setEngine(p.model.startsWith('gpt-image') ? 'gpt' : 'banana');
+          document.getElementById('model').value = p.model;
+        }
         if (p.ar) document.getElementById('aspectRatio').value = p.ar;
         if (p.size) document.getElementById('imageSize').value = p.size;
         if (p.duration) document.getElementById('duration').value = p.duration;
@@ -568,7 +587,36 @@
         if (uploadedImages.length) { renderPreview(); setMode('image'); }
       } catch (e) {}
     }
-    function getBaseUrl() { return 'https://grsaiapi.com'; }
+    function getBaseUrl() { return 'https://grsai.dakka.com.cn'; }
+
+    // 模型引擎：banana（nano-banana 系列）与 gpt（GPT Image 系列）分开
+    const ENGINE_MODELS = {
+      banana: [
+        { value: 'nano-banana-pro', label: 'nano-banana-pro' },
+        { value: 'nano-banana-2', label: 'nano-banana-2' },
+        { value: 'nano-banana', label: 'nano-banana' }
+      ],
+      gpt: [
+        { value: 'gpt-image-2', label: 'gpt-image-2' },
+        { value: 'gpt-image-2-vip', label: 'gpt-image-2-vip' }
+      ]
+    };
+    function currentEngine() {
+      return document.getElementById('engGpt').classList.contains('active') ? 'gpt' : 'banana';
+    }
+    function setEngine(engine) {
+      document.getElementById('engBanana').classList.toggle('active', engine === 'banana');
+      document.getElementById('engGpt').classList.toggle('active', engine === 'gpt');
+      renderModelOptions(engine);
+      localStorage.setItem('nb_engine', engine);
+    }
+    function renderModelOptions(engine) {
+      const sel = document.getElementById('model');
+      sel.innerHTML = ENGINE_MODELS[engine].map(o =>
+        `<option value="${o.value}">${o.label}</option>`).join('');
+    }
+
+
 
     function showError(msg) {
       const el = document.getElementById('errorMsg');
@@ -594,7 +642,6 @@
       if (model.startsWith('gpt-image')) { await gptImageGenerate(); return; }
       const apiKey = document.getElementById('apiKey').value.trim();
       const prompt = document.getElementById('prompt').value.trim();
-      const model = document.getElementById('model').value;
       const aspectRatio = document.getElementById('aspectRatio').value;
       const imageSize = document.getElementById('imageSize').value;
       const duration = document.getElementById('duration').value.trim();
