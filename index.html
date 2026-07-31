@@ -213,6 +213,8 @@
                 <option value="nano-banana-pro" selected>nano-banana-pro</option>
                 <option value="nano-banana-2">nano-banana-2</option>
                 <option value="nano-banana">nano-banana</option>
+                <option value="gpt-image-2">gpt-image-2</option>
+                <option value="gpt-image-2-vip">gpt-image-2-vip</option>
               </select>
             </div>
             <div class="group">
@@ -288,7 +290,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260730-1132';
+    const APP_VERSION = '20260731-0932';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -588,6 +590,8 @@
 
     async function generate() {
       hideError();
+      const model = document.getElementById('model').value;
+      if (model.startsWith('gpt-image')) { await gptImageGenerate(); return; }
       const apiKey = document.getElementById('apiKey').value.trim();
       const prompt = document.getElementById('prompt').value.trim();
       const model = document.getElementById('model').value;
@@ -639,6 +643,68 @@
           const d = await res.json();
           if (d.status === 'succeeded') { showResults(d); addHistory(prompt, d.results); showToast('生成成功！'); return; }
           if (d.status === 'failed') { setLoading(false); showError('生成失败: ' + (d.error || '未知')); return; }
+        } catch (e) {}
+      }
+      setLoading(false); showError('轮询超时（约3分钟），任务 ID: ' + id);
+    }
+
+    // ---- GPT Image 接口：/v1/draw/completions + /v1/draw/result ----
+    async function gptImageGenerate() {
+      hideError();
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const prompt = document.getElementById('prompt').value.trim();
+      const model = document.getElementById('model').value;
+      const aspectRatio = document.getElementById('aspectRatio').value;
+      const baseUrl = getBaseUrl();
+
+      if (!apiKey) { showError('请先填写你的 API Key'); document.getElementById('apiKey').focus(); return; }
+      if (!prompt) { showError('请输入图片描述'); document.getElementById('prompt').focus(); return; }
+
+      // gpt-image 的参考图走 urls（公网可访问的图片 URL）；本地上传的 base64 服务端无法拉取
+      let urls = [];
+      if (mode === 'image') {
+        urls = uploadedImages.filter(x => /^https?:\/\//i.test(x.src)).map(x => x.src);
+        if (uploadedImages.length > 0 && urls.length === 0) {
+          showError('GPT Image 图生图需使用「图片 URL」作为参考图（非本地上传）。请在下方粘贴图片 URL。');
+          return;
+        }
+      }
+      localStorage.setItem('nb_apikey', apiKey);
+      saveSettings();
+
+      const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+      const body = { model, prompt, size: aspectRatio, webHook: '-1', shutProgress: false };
+      if (urls.length) body.urls = urls;
+
+      setLoading(true);
+      genStart = Date.now();
+      try {
+        const res = await fetch(`${baseUrl}/v1/draw/completions`, { method: 'POST', headers, body: JSON.stringify(body) });
+        let data; try { data = await res.json(); } catch (e) { data = {}; }
+        if (!res.ok) { setLoading(false); showError(`请求失败 (${res.status}): ${JSON.stringify(data).slice(0, 300)}`); return; }
+        const id = (data && data.data && data.data.id) || (data && data.id);
+        if (!id) { setLoading(false); showError('未返回任务 ID: ' + JSON.stringify(data).slice(0, 300)); return; }
+        await gptImagePoll(id, prompt, apiKey, baseUrl);
+      } catch (err) {
+        setLoading(false); showError('网络错误: ' + err.message);
+      }
+    }
+    async function gptImagePoll(id, prompt, apiKey, baseUrl) {
+      setLoading(true, 'GPT Image 生成中，请稍候…');
+      const maxAttempts = 60, interval = 3000;
+      const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+      for (let i = 0; i < maxAttempts; i++) {
+        await sleep(interval);
+        try {
+          const res = await fetch(`${baseUrl}/v1/draw/result`, { method: 'POST', headers, body: JSON.stringify({ id }) });
+          const d = await res.json();
+          const dd = (d && d.data) || d || {};
+          const st = dd.status;
+          if (st === 'succeeded' || st === 'success' || st === 'completed') {
+            const results = (dd.results || []).map(r => ({ url: r.url || r })).filter(r => r.url);
+            showResults({ results }); addHistory(prompt, results); showToast('生成成功！'); return;
+          }
+          if (st === 'failed' || st === 'error') { setLoading(false); showError('生成失败: ' + (dd.error || JSON.stringify(dd).slice(0, 200))); return; }
         } catch (e) {}
       }
       setLoading(false); showError('轮询超时（约3分钟），任务 ID: ' + id);
