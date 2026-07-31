@@ -76,6 +76,14 @@
     .engine-tab.active.banana { color: #7c3aed; }
     .engine-tab.active.gpt { color: #0ea5e9; }
 
+    /* 顶部余额查询 */
+    .bal-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 12px 0 4px;
+      background: #f7faff; border: 1px solid var(--border); border-radius: 14px; flex-wrap: wrap; }
+    .bal-bar .bal-label { font-size: 12px; font-weight: 700; color: var(--sub); white-space: nowrap; }
+    .bal-bar .bal-info { flex: 1; min-width: 140px; font-size: 12px; font-weight: 600; padding: 8px 12px;
+      border-radius: 8px; word-break: break-all; display: none; }
+    .bal-bar .btn-soft { white-space: nowrap; }
+
     .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 22px 14px; text-align: center;
       cursor: pointer; transition: var(--t); background: #fbfbfc; }
     .dropzone:hover, .dropzone.dragover { border-color: var(--accent); background: rgba(79,70,229,.04); }
@@ -171,6 +179,12 @@
       </div>
     </div>
 
+    <div class="bal-bar">
+      <span class="bal-label">💰 余额</span>
+      <button class="btn btn-soft" style="font-size:13px;" onclick="checkBalance()">查询余额</button>
+      <span class="bal-info" id="balanceInfo"></span>
+    </div>
+
     <div class="err" id="errorMsg"></div>
 
     <div class="layout">
@@ -189,8 +203,6 @@
               <input type="password" id="apiKey" placeholder="sk-xxxxxxxxxxx" autocomplete="off">
               <button class="icon-btn" id="toggleKeyBtn" type="button" title="显示/隐藏">👁</button>
             </div>
-            <button class="btn btn-soft" style="margin-top:10px; width:100%; font-size:13px;" onclick="checkBalance()">💰 查询余额</button>
-            <div class="balance" id="balanceInfo"></div>
           </div>
 
           <div class="divider"></div>
@@ -303,7 +315,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260731-1030';
+    const APP_VERSION = '20260731-1040';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
