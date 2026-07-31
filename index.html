@@ -83,6 +83,10 @@
     .bal-bar .bal-info { flex: 1; min-width: 140px; font-size: 12px; font-weight: 600; padding: 8px 12px;
       border-radius: 8px; word-break: break-all; display: none; }
     .bal-bar .btn-soft { white-space: nowrap; }
+    .rate-box { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--sub); white-space: nowrap; }
+    .rate-input { width: 66px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: #fff; }
+    .cost-info { flex-basis: 100%; width: 100%; font-size: 12px; font-weight: 700; color: #b91c1c;
+      background: #fef2f2; border: 1px solid #fecaca; padding: 6px 10px; border-radius: 8px; display: none; }
 
     .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 22px 14px; text-align: center;
       cursor: pointer; transition: var(--t); background: #fbfbfc; }
@@ -198,8 +202,10 @@
 
     <div class="bal-bar">
       <span class="bal-label">💰 余额</span>
-      <button class="btn btn-soft" style="font-size:13px;" onclick="checkBalance()">查询余额</button>
+      <button class="btn btn-soft" style="font-size:13px;" onclick="checkBalance()">查询</button>
       <span class="bal-info" id="balanceInfo"></span>
+      <span class="rate-box" title="填写积分兑人民币汇率，用于把消耗积分折算成金额（仅本地估算，不上传）">💱 1元=<input id="creditRate" class="rate-input" type="number" min="0" step="0.1" placeholder="积分"><span style="color:var(--sub);font-size:11px;">积分</span></span>
+      <span class="cost-info" id="costInfo"></span>
     </div>
 
     <div class="err" id="errorMsg"></div>
@@ -415,7 +421,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260731-1400';
+    const APP_VERSION = '20260731-1410';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -448,6 +454,9 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       restoreSettings();
+      const rateEl = document.getElementById('creditRate');
+      const savedRate = localStorage.getItem('nb_rate'); if (savedRate) rateEl.value = savedRate;
+      rateEl.addEventListener('change', () => localStorage.setItem('nb_rate', rateEl.value));
       restoreFromHash();
       renderHistory();
       document.getElementById('toggleKeyBtn').addEventListener('click', () => {
@@ -629,6 +638,57 @@
       };
       const v = dig(data);
       return v !== null ? v + ' 积分' : (typeof data === 'string' ? data : JSON.stringify(data).slice(0, 200));
+    }
+
+    // 从余额响应中提取数值（与 formatBalance 同逻辑，但返回 number）
+    function parseCreditsNumber(d) {
+      if (typeof d === 'number') return d;
+      if (!d || typeof d !== 'object') return null;
+      if (typeof d.code === 'number' && d.code !== 0) return null;
+      const keys = ['credits', 'balance', 'remaining', 'quota', 'amount', 'credit'];
+      const dig = (o) => {
+        if (!o || typeof o !== 'object') return null;
+        for (const k of keys) if (typeof o[k] === 'number') return o[k];
+        for (const k in o) { if (typeof o[k] === 'object') { const r = dig(o[k]); if (r !== null) return r; } }
+        return null;
+      };
+      return dig(d);
+    }
+    // 查询当前余额数值（依次尝试多个接口，返回 number 或 null）
+    async function fetchCreditsValue(apiKey) {
+      const baseUrl = getBaseUrl();
+      const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
+      const tries = [
+        () => fetch(`${baseUrl}/client/common/getCredits?apikey=${encodeURIComponent(apiKey)}`, { method: 'GET', headers }).then(r => r.json()),
+        () => fetch(`${baseUrl}/client/openapi/getAPIKeyCredits`, { method: 'POST', headers, body: JSON.stringify({ apikey: apiKey }) }).then(r => r.json()),
+        () => fetch(`${baseUrl}/client/openapi/getCredits`, { method: 'POST', headers, body: JSON.stringify({}) }).then(r => r.json()),
+      ];
+      for (const t of tries) {
+        try { const d = await t(); const v = parseCreditsNumber(d); if (v !== null) return v; } catch (e) {}
+      }
+      return null;
+    }
+    // 生成前后各查一次余额，得出本次真实消耗（积分），并可按汇率折算金额
+    let lastBeforeCredits = null;
+    async function recordCost(apiKey, beforeVal, imgCount) {
+      const after = await fetchCreditsValue(apiKey);
+      const info = document.getElementById('balanceInfo');
+      if (after !== null) {
+        info.style.display = 'block'; info.style.color = 'var(--ok)'; info.style.background = '#ecfdf5';
+        info.textContent = '💰 剩余余额：' + after + ' 积分';
+      }
+      const costEl = document.getElementById('costInfo');
+      if (beforeVal !== null && after !== null) {
+        const delta = Math.max(0, Math.round((beforeVal - after) * 100) / 100);
+        const rate = parseFloat(document.getElementById('creditRate').value);
+        let money = '', per = '';
+        if (rate > 0) money = ` · ≈ ¥${(delta / rate).toFixed(2)}`;
+        if (imgCount > 0) per = `（每张 ≈ ${Math.round((delta / imgCount) * 100) / 100} 积分）`;
+        costEl.textContent = `🧾 本次消耗 ${delta} 积分${per}${money}`;
+        costEl.style.display = 'inline-block';
+      } else {
+        costEl.style.display = 'none';
+      }
     }
 
     async function checkBalance() {
@@ -1077,6 +1137,7 @@
         const prompt = document.getElementById('beadPrompt').value.trim();
         if (!apiKey) { showError('请先在上方填写 API Key'); document.getElementById('apiKey').focus(); return; }
         if (!prompt) { showError('请输入拼豆原图描述'); document.getElementById('beadPrompt').focus(); return; }
+        lastBeforeCredits = await fetchCreditsValue(apiKey);
         setBeadLoading(true, 'AI 正在生成原图…');
         let url;
         try {
@@ -1086,6 +1147,7 @@
         setBeadLoading(true, '原图已生成，正在转为拼豆图纸…');
         try { imgEl = await loadImageCors(url); beadImgW = imgEl.naturalWidth || imgEl.width; beadImgH = imgEl.naturalHeight || imgEl.height; }
         catch (e) { showBeadCorsFallback(url); return; }
+        recordCost(apiKey, lastBeforeCredits, 1);
       }
 
       setBeadLoading(true, '正在生成拼豆图纸…');
@@ -1185,6 +1247,7 @@
       const body = { model, prompt, images, aspectRatio, imageSize, replyType: 'json' };
       if (duration) body.duration = Number(duration);
 
+      lastBeforeCredits = await fetchCreditsValue(apiKey);
       setLoading(true);
       genStart = Date.now();
       try {
@@ -1193,6 +1256,7 @@
         if (!res.ok) { setLoading(false); showError(`请求失败 (${res.status}): ${JSON.stringify(data).slice(0, 300)}`); return; }
         if (data.status === 'succeeded') {
           showResults(data); addHistory(prompt, data.results); showToast('生成成功！');
+          recordCost(apiKey, lastBeforeCredits, (data.results || []).length);
         } else if (data.status === 'processing') {
           await pollStatus(data.id, prompt, apiKey, baseUrl);
         } else {
@@ -1213,7 +1277,7 @@
           const res = await fetch(`${baseUrl}/v1/api/generate/status/${id}`, { headers: { 'Authorization': `Bearer ${apiKey}` } });
           if (res.status === 404) { setLoading(false); showError('异步状态接口不可用，任务 ID: ' + id); return; }
           const d = await res.json();
-          if (d.status === 'succeeded') { showResults(d); addHistory(prompt, d.results); showToast('生成成功！'); return; }
+          if (d.status === 'succeeded') { showResults(d); addHistory(prompt, d.results); showToast('生成成功！'); recordCost(apiKey, lastBeforeCredits, (d.results || []).length); return; }
           if (d.status === 'failed') { setLoading(false); showError('生成失败: ' + (d.error || '未知')); return; }
         } catch (e) {}
       }
@@ -1248,6 +1312,7 @@
       const body = { model, prompt, size: aspectRatio, webHook: '-1', shutProgress: false };
       if (urls.length) body.urls = urls;
 
+      lastBeforeCredits = await fetchCreditsValue(apiKey);
       setLoading(true);
       genStart = Date.now();
       try {
@@ -1274,7 +1339,7 @@
           const st = dd.status;
           if (st === 'succeeded' || st === 'success' || st === 'completed') {
             const results = (dd.results || []).map(r => ({ url: r.url || r })).filter(r => r.url);
-            showResults({ results }); addHistory(prompt, results); showToast('生成成功！'); return;
+            showResults({ results }); addHistory(prompt, results); showToast('生成成功！'); recordCost(apiKey, lastBeforeCredits, results.length); return;
           }
           if (st === 'failed' || st === 'error') { setLoading(false); showError('生成失败: ' + (dd.error || JSON.stringify(dd).slice(0, 200))); return; }
         } catch (e) {}
