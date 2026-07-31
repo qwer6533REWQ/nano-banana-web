@@ -76,6 +76,13 @@
     .engine-tab.active.banana { color: #7c3aed; }
     .engine-tab.active.gpt { color: #0ea5e9; }
 
+    /* 顶部模型选择条 */
+    .model-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 12px 0 4px;
+      background: linear-gradient(135deg, #fff7fb, #fff); border: 1px solid var(--border); border-radius: 14px; }
+    .model-bar .engine-label { font-size: 12px; font-weight: 700; color: var(--sub); white-space: nowrap; }
+    .model-bar select { flex: 1; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; font-weight: 600; background: #fff; color: var(--text); font-family: inherit; }
+    .model-bar .model-hint { font-size: 11px; color: var(--sub); white-space: nowrap; }
+
     /* 顶部余额查询 */
     .bal-bar { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 12px 0 4px;
       background: #f7faff; border: 1px solid var(--border); border-radius: 14px; flex-wrap: wrap; }
@@ -200,6 +207,12 @@
       </div>
     </div>
 
+    <div class="model-bar">
+      <span class="engine-label">🎯 模型</span>
+      <select id="model"></select>
+      <span class="model-hint">随上方引擎自动切换</span>
+    </div>
+
     <div class="bal-bar">
       <span class="bal-label">💰 余额</span>
       <button class="btn btn-soft" style="font-size:13px;" onclick="checkBalance()">查询</button>
@@ -263,10 +276,6 @@
           </div>
 
           <div class="row">
-            <div class="group">
-              <label>模型（随上方引擎切换）</label>
-              <select id="model"></select>
-            </div>
             <div class="group">
               <label>画幅</label>
               <select id="aspectRatio">
@@ -421,7 +430,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260731-1410';
+    const APP_VERSION = '20260731-1431';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
