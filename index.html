@@ -323,22 +323,31 @@
               <div class="hint">将调用上方所选引擎生成原图，再自动转成拼豆图纸。提示词建议加「像素风 / 扁平纯色 / 无渐变 / 简洁轮廓」。</div>
             </div>
 
+            <div class="group">
+              <label>拼豆品牌（色板）</label>
+              <div class="engine-tabs">
+                <button class="engine-tab banana active" id="beadBrandPerler" onclick="setBeadBrand('perler')">🔵 Perler</button>
+                <button class="engine-tab gpt" id="beadBrandHama" onclick="setBeadBrand('hama')">🟡 Hama</button>
+              </div>
+            </div>
+
             <div class="row">
               <div class="group">
                 <label>网格大小（边长格数）</label>
                 <select id="beadGrid">
-                  <option value="29">29 × 29（小）</option>
-                  <option value="39" selected>39 × 39（中）</option>
-                  <option value="49">49 × 49（大，细节多）</option>
+                  <option value="29" selected>29 × 29（1 块标准板）</option>
+                  <option value="58">58 × 58（4 块板 2×2）</option>
+                  <option value="87">87 × 87（9 块板 3×3）</option>
                   <option value="custom">自定义</option>
                 </select>
-                <input type="number" id="beadGridCustom" min="8" max="80" placeholder="自定义格数 8–80" style="display:none; margin-top:8px;">
+                <input type="number" id="beadGridCustom" min="8" max="120" placeholder="自定义格数 8–120" style="display:none; margin-top:8px;">
+                <div class="hint" id="beadBoardHint">单块标准板 = 29×29（841 颗）；当前约需 1 块板。</div>
               </div>
               <div class="group">
-                <label>色板</label>
+                <label>色板范围</label>
                 <select id="beadPalette">
-                  <option value="full">标准 57 色（Perler）</option>
-                  <option value="lite">精简 24 色（入门）</option>
+                  <option value="full">完整色（Perler 57 / Hama 53）</option>
+                  <option value="lite">基础 24 色（入门套装）</option>
                 </select>
               </div>
             </div>
@@ -346,6 +355,10 @@
             <div class="group" style="display:flex; align-items:center; gap:8px;">
               <input type="checkbox" id="beadShowCode" checked>
               <label style="margin:0; font-size:13px;">在格子内显示色号</label>
+            </div>
+            <div class="group" style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="beadDither">
+              <label style="margin:0; font-size:13px;">抖动优化（渐变更细腻，颜色数略增）</label>
             </div>
 
             <button class="btn btn-primary" onclick="generateBead()">📐 生成拼豆图纸</button>
@@ -400,7 +413,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260731-1100';
+    const APP_VERSION = '20260731-1200';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -720,8 +733,9 @@
     }
 
     // ===================== 拼豆图纸功能 =====================
-    // Perler 标准色板（色号 + 名称 + HEX）
-    const BEAD_FULL = [
+    // 拼豆色板数据库：Perler（北美主流）/ Hama（欧洲&国内主流，Midi 5mm 完全通用）
+    // 数据来源：Perler / Hama 官方色卡（色号 + 名称 + HEX）
+    const BEAD_PERLER_FULL = [
       {c:'P01',n:'白色',h:'#F1F1F1'},{c:'P81',n:'浅灰',h:'#EEE3CF'},{c:'P17',n:'灰色',h:'#8A8D91'},
       {c:'P105',n:'银色',h:'#777B81'},{c:'P92',n:'深灰',h:'#4D5156'},{c:'P18',n:'黑色',h:'#2E2F32'},
       {c:'P100',n:'珍珠珊瑚',h:'#F97E79'},{c:'P104',n:'珍珠浅粉',h:'#D7A8A2'},{c:'P20',n:'锈色',h:'#8C372C'},
@@ -742,7 +756,7 @@
       {c:'P96',n:'蔓越莓',h:'#801922'},{c:'P05',n:'红色',h:'#F01820'},{c:'P59',n:'热珊瑚',h:'#FF3851'},
       {c:'P63',n:'腮红',h:'#FF8285'},{c:'P62',n:'青色',h:'#2B89C6'},{c:'P82',n:'薰衣草',h:'#AD98D4'}
     ];
-    const BEAD_LITE = [
+    const BEAD_PERLER_LITE = [
       {c:'P01',n:'白色',h:'#F1F1F1'},{c:'P18',n:'黑色',h:'#2E2F32'},{c:'P17',n:'灰色',h:'#8A8D91'},
       {c:'P81',n:'浅灰',h:'#EEE3CF'},{c:'P12',n:'棕色',h:'#513931'},{c:'P04',n:'橙色',h:'#ED6100'},
       {c:'P03',n:'黄色',h:'#ECD800'},{c:'P57',n:'切达黄',h:'#F1AA0C'},{c:'P05',n:'红色',h:'#F01820'},
@@ -752,7 +766,46 @@
       {c:'P33',n:'桃色(肤)',h:'#EEBAB2'},{c:'P20',n:'锈色',h:'#8C372C'},{c:'P85',n:'金色',h:'#BB7634'},
       {c:'P179',n:'常青绿',h:'#114938'},{c:'P70',n:'长春花蓝',h:'#647CBE'}
     ];
-    const BEAD_PALETTES = { full: BEAD_FULL, lite: BEAD_LITE };
+    // Hama Midi 标准 53 色（国内拼豆主流品牌）
+    const BEAD_HAMA_FULL = [
+      {c:'H01',n:'白色',h:'#ECEDED'},{c:'H02',n:'奶油',h:'#F0E8B9'},{c:'H03',n:'金',h:'#F0B901'},
+      {c:'H04',n:'橙',h:'#E64F27'},{c:'H05',n:'红',h:'#B63136'},{c:'H06',n:'粉',h:'#E1889F'},
+      {c:'H07',n:'紫',h:'#694A82'},{c:'H08',n:'深蓝',h:'#2C4690'},{c:'H09',n:'蓝',h:'#305CB0'},
+      {c:'H10',n:'深绿',h:'#256847'},{c:'H11',n:'青绿',h:'#49AE89'},{c:'H12',n:'棕',h:'#534137'},
+      {c:'H101',n:'浅绿',h:'#A9C39B'},{c:'H102',n:'森林绿',h:'#356B2D'},{c:'H103',n:'黄',h:'#FFE660'},
+      {c:'H104',n:'青柠',h:'#BCD122'},{c:'H105',n:'桃',h:'#FFAC78'},{c:'H106',n:'薰衣草',h:'#CCC5ED'},
+      {c:'H107',n:'天蓝',h:'#6A87C1'},{c:'H17',n:'灰',h:'#83888A'},{c:'H18',n:'黑',h:'#2E2F31'},
+      {c:'H20',n:'深棕',h:'#7F332A'},{c:'H21',n:'棕褐',h:'#A5693F'},{c:'H22',n:'酒红',h:'#A52D36'},
+      {c:'H26',n:'三文鱼',h:'#DE9B90'},{c:'H27',n:'浅棕',h:'#DEB48B'},{c:'H28',n:'深灰',h:'#363F38'},
+      {c:'H29',n:'品红',h:'#B9395E'},{c:'H30',n:'栗',h:'#592F38'},{c:'H31',n:'钢蓝',h:'#6797AE'},
+      {c:'H33',n:'亮红',h:'#FF3956'},{c:'H43',n:'亮黄',h:'#F0EA37'},{c:'H44',n:'玫红',h:'#EE6972'},
+      {c:'H45',n:'淡紫',h:'#886DB9'},{c:'H46',n:'矢车菊蓝',h:'#629ED7'},{c:'H47',n:'绿',h:'#83CB70'},
+      {c:'H48',n:'兰紫',h:'#CF70B7'},{c:'H49',n:'海蓝',h:'#4998BC'},{c:'H60',n:'焦橙',h:'#F49422'},
+      {c:'H70',n:'长春花',h:'#B6B6D4'},{c:'H71',n:'炭灰',h:'#464541'},{c:'H75',n:'焦糖',h:'#BF7B4D'},
+      {c:'H76',n:'巧',h:'#663317'},{c:'H77',n:'米',h:'#EDE7DF'},{c:'H78',n:'浅橙',h:'#FFC99A'},
+      {c:'H79',n:'杏',h:'#F08643'},{c:'H82',n:'酒紫',h:'#962F5C'},{c:'H83',n:'蓝绿',h:'#0178A4'},
+      {c:'H84',n:'橄榄',h:'#8B924C'},{c:'H95',n:'浅粉',h:'#F8CCE0'},{c:'H96',n:'丁香紫',h:'#D4B1E3'},
+      {c:'H97',n:'浅蓝',h:'#A2D3FE'},{c:'H98',n:'薄荷',h:'#9ADBB1'}
+    ];
+    const BEAD_HAMA_LITE = [
+      {c:'H01',n:'白色',h:'#ECEDED'},{c:'H18',n:'黑',h:'#2E2F31'},{c:'H17',n:'灰',h:'#83888A'},
+      {c:'H12',n:'棕',h:'#534137'},{c:'H04',n:'橙',h:'#E64F27'},{c:'H03',n:'金',h:'#F0B901'},
+      {c:'H05',n:'红',h:'#B63136'},{c:'H06',n:'粉',h:'#E1889F'},{c:'H07',n:'紫',h:'#694A82'},
+      {c:'H09',n:'蓝',h:'#305CB0'},{c:'H10',n:'深绿',h:'#256847'},{c:'H11',n:'青绿',h:'#49AE89'},
+      {c:'H103',n:'黄',h:'#FFE660'},{c:'H101',n:'浅绿',h:'#A9C39B'},{c:'H29',n:'品红',h:'#B9395E'},
+      {c:'H22',n:'酒红',h:'#A52D36'},{c:'H08',n:'深蓝',h:'#2C4690'},{c:'H46',n:'矢车菊蓝',h:'#629ED7'},
+      {c:'H33',n:'亮红',h:'#FF3956'},{c:'H44',n:'玫红',h:'#EE6972'},{c:'H26',n:'三文鱼(肤)',h:'#DE9B90'},
+      {c:'H20',n:'深棕',h:'#7F332A'},{c:'H75',n:'焦糖',h:'#BF7B4D'},{c:'H98',n:'薄荷',h:'#9ADBB1'}
+    ];
+    const BEAD_DB = {
+      perler: { full: BEAD_PERLER_FULL, lite: BEAD_PERLER_LITE },
+      hama:   { full: BEAD_HAMA_FULL,   lite: BEAD_HAMA_LITE }
+    };
+    let beadBrand = 'perler';
+    function currentBeadPalette() {
+      const size = document.getElementById('beadPalette').value;
+      return BEAD_DB[beadBrand][size] || BEAD_DB.perler.full;
+    }
 
     let beadSrc = 'upload';
     let beadImgReady = false;
@@ -765,6 +818,24 @@
       document.getElementById('beadSrcAi').classList.toggle('active', s === 'ai');
       document.getElementById('beadUploadBox').style.display = s === 'upload' ? 'block' : 'none';
       document.getElementById('beadAiBox').style.display = s === 'ai' ? 'block' : 'none';
+    }
+    function setBeadBrand(b) {
+      beadBrand = b;
+      document.getElementById('beadBrandPerler').classList.toggle('active', b === 'perler');
+      document.getElementById('beadBrandHama').classList.toggle('active', b === 'hama');
+      const pal = document.getElementById('beadPalette');
+      const label = b === 'perler' ? '（Perler 57 / Hama 53）' : '（Hama 53 色）';
+      pal.querySelector('option[value="full"]').textContent = '完整色' + label;
+    }
+    function updateBeadBoardHint() {
+      const gs = document.getElementById('beadGrid').value;
+      let N = gs === 'custom' ? (parseInt(document.getElementById('beadGridCustom').value, 10) || 0) : parseInt(gs, 10);
+      const hint = document.getElementById('beadBoardHint');
+      if (!N || N < 1) { hint.textContent = '单块标准板 = 29×29（841 颗）；自定义请输入格数。'; return; }
+      const BOARD = 29;
+      const bx = Math.ceil(N / BOARD), by = Math.ceil(N / BOARD);
+      const total = bx * by;
+      hint.textContent = `单块标准板 = 29×29（841 颗）；当前 ${N}×${N} 约需 ${bx}×${by}＝${total} 块板。`;
     }
     function setupBeadUI() {
       const bf = document.getElementById('beadFile');
@@ -784,8 +855,11 @@
       const bg = document.getElementById('beadGrid');
       bg.addEventListener('change', () => {
         document.getElementById('beadGridCustom').style.display = bg.value === 'custom' ? 'block' : 'none';
+        updateBeadBoardHint();
       });
+      document.getElementById('beadGridCustom').addEventListener('input', updateBeadBoardHint);
       setBeadSrc('upload');
+      updateBeadBoardHint();
     }
     function loadImage(src) {
       return new Promise((resolve, reject) => {
@@ -807,16 +881,7 @@
       });
     }
     function hexToRgb(h) { return [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)]; }
-    function nearestColor(r, g, b, palette) {
-      let best = palette[0], bd = Infinity;
-      for (const p of palette) {
-        const [pr, pg, pb] = hexToRgb(p.h);
-        const d = (pr-r)*(pr-r) + (pg-g)*(pg-g) + (pb-b)*(pb-b);
-        if (d < bd) { bd = d; best = p; }
-      }
-      return best;
-    }
-    function buildBeadPattern(img, N, palette) {
+    function buildBeadPattern(img, N, palette, dither) {
       const cv = document.createElement('canvas'); cv.width = N; cv.height = N;
       const ctx = cv.getContext('2d');
       const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
@@ -826,11 +891,49 @@
       let data;
       try { data = ctx.getImageData(0, 0, N, N).data; }
       catch (e) { throw new Error('CORS'); }
-      const grid = []; const counts = {};
+
+      // 预计算色板 RGB，按索引最近匹配（避免逐像素重复解析 HEX）
+      const palRGB = palette.map(p => hexToRgb(p.h));
+      const nearestIdx = (r, g, b) => {
+        let bi = 0, bd = Infinity;
+        for (let k = 0; k < palRGB.length; k++) {
+          const pr = palRGB[k][0], pg = palRGB[k][1], pb = palRGB[k][2];
+          const d = (pr - r) * (pr - r) + (pg - g) * (pg - g) + (pb - b) * (pb - b);
+          if (d < bd) { bd = d; bi = k; }
+        }
+        return bi;
+      };
+
+      const grid = new Array(N * N); const counts = {};
+      if (!dither) {
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+          const i = (y * N + x) * 4;
+          const p = palette[nearestIdx(data[i], data[i+1], data[i+2])];
+          grid[y * N + x] = p; counts[p.c] = (counts[p.c] || 0) + 1;
+        }
+        return { grid, counts };
+      }
+
+      // Floyd–Steinberg 抖动：把量化误差扩散到邻域，渐变更细腻（颜色数会略增）
+      const R = new Float64Array(N * N), G = new Float64Array(N * N), B = new Float64Array(N * N);
+      for (let k = 0; k < N * N; k++) { R[k] = data[k*4]; G[k] = data[k*4+1]; B[k] = data[k*4+2]; }
+      const diffuse = (x, y, er, eg, eb, f) => {
+        if (x < 0 || x >= N || y < 0 || y >= N) return;
+        const k = y * N + x;
+        R[k] += er * f; G[k] += eg * f; B[k] += eb * f;
+      };
       for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-        const i = (y * N + x) * 4;
-        const p = nearestColor(data[i], data[i+1], data[i+2], palette);
-        grid.push(p); counts[p.c] = (counts[p.c] || 0) + 1;
+        const k = y * N + x;
+        const r = Math.round(R[k]), g = Math.round(G[k]), b = Math.round(B[k]);
+        const bi = nearestIdx(r, g, b);
+        const p = palette[bi];
+        grid[k] = p; counts[p.c] = (counts[p.c] || 0) + 1;
+        const pal = palRGB[bi];
+        const er = r - pal[0], eg = g - pal[1], eb = b - pal[2];
+        diffuse(x + 1, y, er, eg, eb, 7/16);
+        diffuse(x - 1, y + 1, er, eg, eb, 3/16);
+        diffuse(x, y + 1, er, eg, eb, 5/16);
+        diffuse(x + 1, y + 1, er, eg, eb, 1/16);
       }
       return { grid, counts };
     }
@@ -840,7 +943,7 @@
       if (text) document.getElementById('beadLoadingText').textContent = text;
       document.getElementById('beadResult').style.display = on ? 'none' : 'block';
     }
-    function renderBeadResult(grid, N, counts, palette, showCode) {
+    function renderBeadResult(grid, N, counts, palette, showCode, boards) {
       const box = document.getElementById('beadResult');
       const stats = palette.filter(p => counts[p.c]).map(p =>
         `<div class="bead-stat"><span class="sw" style="background:${p.h}"></span><span class="code">${p.c}</span><span style="color:var(--sub)">${p.n}</span><span class="cnt">×${counts[p.c]}</span></div>`
@@ -848,9 +951,10 @@
       const cells = grid.map(p =>
         `<div class="bead-cell" style="background:${p.h}">${showCode ? `<span>${p.c}</span>` : ''}</div>`
       ).join('');
+      const boardTxt = boards ? ` · 约 ${boards.bx}×${boards.by}＝${boards.total} 块 29×29 板` : '';
       box.innerHTML =
         `<div class="bead-grid" style="grid-template-columns:repeat(${N},1fr)">${cells}</div>` +
-        `<div class="bead-stat-title">🧮 用豆统计（共 ${N*N} 格，需 ${Object.keys(counts).length} 种颜色）</div>` +
+        `<div class="bead-stat-title">🧮 用豆统计（共 ${N*N} 格，需 ${Object.keys(counts).length} 种颜色${boardTxt}）</div>` +
         `<div class="bead-stats">${stats}</div>` +
         `<div class="bead-actions">` +
           `<button class="btn btn-primary" onclick="downloadBeadPng()">🖼 下载图纸 PNG</button>` +
@@ -923,10 +1027,13 @@
     async function generateBead() {
       hideError();
       const gs = document.getElementById('beadGrid').value;
-      let N = gs === 'custom' ? (parseInt(document.getElementById('beadGridCustom').value, 10) || 39) : parseInt(gs, 10);
-      N = Math.max(8, Math.min(80, N));
-      const palette = BEAD_PALETTES[document.getElementById('beadPalette').value];
+      let N = gs === 'custom' ? (parseInt(document.getElementById('beadGridCustom').value, 10) || 29) : parseInt(gs, 10);
+      N = Math.max(8, Math.min(120, N));
+      const palette = currentBeadPalette();
       const showCode = document.getElementById('beadShowCode').checked;
+      const dither = document.getElementById('beadDither').checked;
+      const BOARD = 29;
+      const boards = { bx: Math.ceil(N / BOARD), by: Math.ceil(N / BOARD), total: Math.ceil(N / BOARD) * Math.ceil(N / BOARD) };
 
       let imgEl, srcUrl = null;
       if (beadSrc === 'upload') {
@@ -951,8 +1058,8 @@
 
       setBeadLoading(true, '正在生成拼豆图纸…');
       try {
-        const { grid, counts } = buildBeadPattern(imgEl, N, palette);
-        renderBeadResult(grid, N, counts, palette, showCode);
+        const { grid, counts } = buildBeadPattern(imgEl, N, palette, dither);
+        renderBeadResult(grid, N, counts, palette, showCode, boards);
       } catch (e) {
         if (e.message === 'CORS') { if (srcUrl) { showBeadCorsFallback(srcUrl); return; } }
         setBeadLoading(false); showError('生成图纸失败：' + e.message);
