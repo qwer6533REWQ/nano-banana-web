@@ -432,7 +432,7 @@
   </div>
 
   <script>
-    const APP_VERSION = '20260731-1450';
+    const APP_VERSION = '20260806-1636';
     // 版本机制：用「带版本号的 URL」作为缓存键。用户打开我给的新版链接时，
     // CDN 必然回源拿最新页；若用旧链接打开则自动纠正到最新版 URL。
     (function () {
@@ -1264,14 +1264,14 @@
       try {
         const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
         let data; try { data = await res.json(); } catch (e) { data = {}; }
-        if (!res.ok) { setLoading(false); showError(`请求失败 (${res.status}): ${JSON.stringify(data).slice(0, 300)}`); return; }
+        if (!res.ok) { setLoading(false); showError(`请求失败：${statusReason(res.status)} · ${explainFailure(data) || JSON.stringify(data).slice(0, 300)}`); return; }
         if (data.status === 'succeeded') {
           showResults(data); addHistory(prompt, data.results); showToast('生成成功！');
           recordCost(apiKey, lastBeforeCredits, (data.results || []).length);
         } else if (data.status === 'processing') {
           await pollStatus(data.id, prompt, apiKey, baseUrl);
         } else {
-          setLoading(false); showError('生成失败: ' + JSON.stringify(data).slice(0, 300));
+          setLoading(false); showError('生成失败：' + explainFailure(data));
         }
       } catch (err) {
         setLoading(false); showError('网络错误: ' + err.message);
@@ -1286,10 +1286,10 @@
         await sleep(interval);
         try {
           const res = await fetch(`${baseUrl}/v1/api/generate/status/${id}`, { headers: { 'Authorization': `Bearer ${apiKey}` } });
-          if (res.status === 404) { setLoading(false); showError('异步状态接口不可用，任务 ID: ' + id); return; }
+          if (res.status === 404) { setLoading(false); showError('异步状态接口不可用（404），任务 ID: ' + id + ' · 可能已过期或节点异常'); return; }
           const d = await res.json();
           if (d.status === 'succeeded') { showResults(d); addHistory(prompt, d.results); showToast('生成成功！'); recordCost(apiKey, lastBeforeCredits, (d.results || []).length); return; }
-          if (d.status === 'failed') { setLoading(false); showError('生成失败: ' + (d.error || '未知')); return; }
+          if (d.status === 'failed') { setLoading(false); showError('生成失败：' + explainFailure(d)); return; }
         } catch (e) {}
       }
       setLoading(false); showError('轮询超时（约3分钟），任务 ID: ' + id);
@@ -1329,7 +1329,7 @@
       try {
         const res = await fetch(`${baseUrl}/v1/draw/completions`, { method: 'POST', headers, body: JSON.stringify(body) });
         let data; try { data = await res.json(); } catch (e) { data = {}; }
-        if (!res.ok) { setLoading(false); showError(`请求失败 (${res.status}): ${JSON.stringify(data).slice(0, 300)}`); return; }
+        if (!res.ok) { setLoading(false); showError(`请求失败：${statusReason(res.status)} · ${explainFailure(data) || JSON.stringify(data).slice(0, 300)}`); return; }
         const id = (data && data.data && data.data.id) || (data && data.id);
         if (!id) { setLoading(false); showError('未返回任务 ID: ' + JSON.stringify(data).slice(0, 300)); return; }
         await gptImagePoll(id, prompt, apiKey, baseUrl);
@@ -1352,21 +1352,77 @@
             const results = (dd.results || []).map(r => ({ url: r.url || r })).filter(r => r.url);
             showResults({ results }); addHistory(prompt, results); showToast('生成成功！'); recordCost(apiKey, lastBeforeCredits, results.length); return;
           }
-          if (st === 'failed' || st === 'error') { setLoading(false); showError('生成失败: ' + (dd.error || JSON.stringify(dd).slice(0, 200))); return; }
+          if (st === 'failed' || st === 'error') { setLoading(false); showError('生成失败：' + explainFailure(dd)); return; }
         } catch (e) {}
       }
       setLoading(false); showError('轮询超时（约3分钟），任务 ID: ' + id);
     }
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+    // ---------- 图片链接健壮性处理 ----------
+    function extractImageUrls(results, baseUrl) {
+      if (!Array.isArray(results)) return [];
+      return results.map(r => {
+        let u = '';
+        if (typeof r === 'string') u = r;
+        else if (r && typeof r === 'object') u = r.url || r.image_url || r.image || r.img_url || r.pic_url || (r.b64_json ? 'data:image/png;base64,' + r.b64_json : '');
+        if (!u) return '';
+        u = String(u).trim();
+        if (/^https?:\/\//i.test(u)) return u.replace(/^http:\/\//i, 'https://'); // http→https，避免混合内容被拦截
+        if (u.startsWith('//')) return 'https:' + u;
+        if (u.startsWith('/')) return (baseUrl || '').replace(/\/$/, '') + u; // 相对路径补全域名
+        if (/^data:/i.test(u)) return u;
+        return u;
+      }).filter(Boolean);
+    }
+    function showImgError(img, url) {
+      const item = img.closest('.item') || img.parentElement;
+      if (!item) return;
+      item.innerHTML = `<div class="img-err" style="padding:30px;text-align:center;">
+        <div style="color:#ef4444;font-weight:700;margin-bottom:8px;">⚠️ 图片加载失败</div>
+        <div style="color:var(--sub);font-size:12px;line-height:1.6;margin-bottom:12px;">常见原因：① 图片链接防盗链（Referer 限制，从本页直接加载被拦截）；② 跨域（CORS）限制；③ 链接已过期；④ HTTP 链接被 HTTPS 页面拦截。可点下方按钮在浏览器新标签页打开原图。</div>
+        <a href="${url}" target="_blank" rel="noopener" style="display:inline-block;padding:8px 16px;border-radius:10px;background:var(--accent);color:#fff;font-size:13px;text-decoration:none;">🔗 在新标签页打开原图</a>
+      </div>`;
+    }
+    function handleImgError(img, i) {
+      const url = (lastResultUrls && lastResultUrls[i]) || img.getAttribute('src') || '';
+      // 先尝试 fetch→blob 绕过部分防盗链/CORS（GitHub Pages 静态站无法服务端代理，主要靠浏览器尝试）
+      fetch(url, { mode: 'cors' }).then(r => {
+        if (!r.ok) throw new Error('status ' + r.status);
+        const ct = r.headers.get('content-type') || '';
+        if (!/^image\//i.test(ct)) throw new Error('not image (' + ct + ')');
+        return r.blob();
+      }).then(blob => {
+        const obj = URL.createObjectURL(blob);
+        img.onerror = null; img.src = obj;
+      }).catch(() => showImgError(img, url));
+    }
+    function statusReason(code) {
+      const m = { 400: '参数错误（请检查描述词 / 参考图 / 画幅）', 401: 'API Key 无效或已过期', 403: '无权限（Key 错误 / 余额不足 / 未授权）', 404: '接口或任务不存在', 429: '请求过于频繁，请稍后再试', 500: '服务端内部错误', 502: '网关错误', 503: '服务暂不可用' };
+      return m[code] || ('HTTP ' + code);
+    }
+    function explainFailure(data) {
+      if (!data) return '未知错误（无返回内容）';
+      if (typeof data === 'string') return data;
+      const err = data.error || data.msg || data.message || data.reason || data.errMsg
+        || (data.data && (data.data.error || data.data.msg || data.data.message || data.data.reason));
+      if (err) return String(err);
+      if (data.data && typeof data.data === 'object') return explainFailure(data.data);
+      return '服务端未返回具体原因（原始返回：' + JSON.stringify(data).slice(0, 300) + '）';
+    }
     function showResults(data) {
       setLoading(false);
       const grid = document.getElementById('resultGrid');
-      const urls = (data.results || []).map(r => r.url).filter(Boolean);
+      const urls = extractImageUrls(data.results, getBaseUrl());
       lastResultUrls = urls;
+      if (urls.length === 0) {
+        showError('生成成功，但未解析到图片链接。原始返回：' + JSON.stringify(data).slice(0, 400));
+        grid.style.display = 'none';
+        return;
+      }
       grid.innerHTML = urls.map((u, i) => `
         <div class="item">
-          <img src="${u}" alt="结果" loading="lazy" onerror="this.parentElement.innerHTML='<p style=color:#ef4444;padding:30px;text-align:center>图片加载失败</p>'">
+          <img src="${u}" alt="结果" loading="lazy" onerror="handleImgError(this, ${i})">
           <div class="ov">
             <button class="btn btn-soft" onclick="downloadImg(${i})">💾 下载</button>
             <button class="btn btn-soft" onclick="copyUrl(${i})">📋 链接</button>
@@ -1439,7 +1495,7 @@
     }
 
     function addHistory(prompt, results) {
-      const urls = (results || []).map(r => r.url).filter(Boolean);
+      const urls = extractImageUrls(results, getBaseUrl());
       if (urls.length === 0) return;
       urls.forEach(u => history.unshift({ prompt, url: u, time: Date.now() }));
       if (history.length > 40) history = history.slice(0, 40);
@@ -1460,7 +1516,7 @@
       const it = history[i]; if (!it) return;
       lastResultUrls = [it.url];
       const grid = document.getElementById('resultGrid');
-      grid.innerHTML = `<div class="item"><img src="${it.url}" alt=""><div class="ov"><button class="btn btn-soft" onclick="downloadImg(0)">💾 下载</button><button class="btn btn-soft" onclick="copyUrl(0)">📋 链接</button></div></div>`;
+      grid.innerHTML = `<div class="item"><img src="${it.url}" alt="" onerror="handleImgError(this, 0)"><div class="ov"><button class="btn btn-soft" onclick="downloadImg(0)">💾 下载</button><button class="btn btn-soft" onclick="copyUrl(0)">📋 链接</button></div></div>`;
       grid.style.display = 'grid';
       document.getElementById('placeholder').style.display = 'none';
       document.getElementById('responseInfo').style.display = 'none';
