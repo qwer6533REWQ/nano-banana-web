@@ -98,7 +98,7 @@
   --r:      8px;
   --r-md:   11px;
   --r-lg:   12px;
-  --r-xl:   12px;
+  --r-xl:   16px;
   --r-pill: 980px;
 
   /* 间距 — 8px 基准，小尺寸 1px 精调 */
@@ -208,10 +208,10 @@ body {
    ============================================================ */
 .nav {
   position: sticky; top: 0; z-index: 900;
-  height: 48px;
+  height: 52px;
   display: flex; align-items: center; gap: var(--s5);
   padding: 0 clamp(16px, 4vw, 32px);
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
   box-shadow: var(--shadow-nav);
@@ -243,12 +243,12 @@ body {
    页面骨架
    ============================================================ */
 .app {
-  max-width: 1020px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 0 clamp(16px, 4vw, 32px) var(--s11);
+  padding: 0 clamp(16px, 4vw, 32px) var(--s9);
 }
 
-.hero { padding: var(--s11) 0 var(--s9); }
+.hero { padding: var(--s7) 0 var(--s6); }
 .hero-eyebrow {
   font-size: 12px; font-weight: 600; letter-spacing: .06em;
   text-transform: uppercase; color: var(--accent); margin-bottom: var(--s3);
@@ -268,9 +268,9 @@ body {
    ============================================================ */
 .configbar {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--s4);
-  padding: var(--s4);
+  padding: var(--s5) var(--s6);
   background: var(--surface);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-xl);
   box-shadow: var(--shadow-card);
   margin-bottom: var(--s7);
 }
@@ -305,8 +305,9 @@ body {
 .segment button:hover { background: var(--fill-quiet); }
 .segment button.active {
   background: var(--surface);
-  box-shadow: 0 1px 3px rgba(0,0,0,.10), 0 0 0 .5px var(--line);
+  box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 0 0 .5px var(--line);
   font-weight: 600;
+  color: var(--text);
 }
 .segment button.active .ic { color: var(--accent); }
 
@@ -338,8 +339,8 @@ body {
    ============================================================ */
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 396px) minmax(0, 1fr);
-  gap: var(--s8);
+  grid-template-columns: minmax(0, 372px) minmax(0, 1fr);
+  gap: var(--s9);
   align-items: start;
 }
 .layout > div { min-width: 0; }
@@ -355,7 +356,9 @@ body {
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-card);
   padding: var(--s7);
+  transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
+.panel:hover { box-shadow: 0 2px 4px rgba(0,0,0,.05), 0 14px 40px rgba(0,0,0,.07); }
 .panel + .panel { margin-top: var(--s7); }
 
 .panel-head {
@@ -407,7 +410,8 @@ textarea:focus, select:focus {
   outline: none;
   background: var(--surface);
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent),
+              0 1px 3px rgba(0,0,0,.04);
 }
 
 textarea { resize: vertical; min-height: 104px; line-height: 1.5; }
@@ -455,23 +459,33 @@ select {
   -webkit-tap-highlight-color: transparent;
 }
 .btn .ic { font-size: 16px; }
-.btn:hover { background: var(--fill-quiet-2); }
-.btn:active { transform: scale(.97); }
+.btn:hover { background: var(--fill-quiet-2); transform: translateY(-.5px); }
+.btn:active { transform: scale(.97) translateY(0); }
 
 /* 主按钮 — Apple Blue，唯一的彩色按钮 */
 .btn-primary {
-  background: var(--accent); color: #fff; font-weight: 500;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--accent) 40%, transparent);
+  background: linear-gradient(180deg, var(--accent-hover) 0%, var(--accent) 100%);
+  color: #fff; font-weight: 600;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--accent) 45%, transparent),
+              0 4px 12px color-mix(in srgb, var(--accent) 20%, transparent);
 }
-.btn-primary:hover { background: var(--accent-hover); }
+.btn-primary:hover {
+  background: linear-gradient(180deg, #3388ff 0%, var(--accent-hover) 100%);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--accent) 45%, transparent),
+              0 6px 16px color-mix(in srgb, var(--accent) 25%, transparent);
+}
 .btn-primary:active { background: var(--accent-press); transform: scale(.97); }
 @media (prefers-color-scheme: dark) {
   .btn-primary { color: #000; }
   .btn-primary:hover { color: #000; }
 }
 
-.btn-soft { background: var(--fill-quiet); color: var(--text); }
-.btn-soft:hover { background: var(--fill-quiet-2); }
+.btn-soft {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+.btn-soft:hover { background: var(--surface-sunk); border-color: var(--line-strong); }
 
 .btn-ghost { background: transparent; border-color: var(--line-strong); }
 .btn-ghost:hover { background: var(--fill-quiet); border-color: var(--text-3); }
@@ -498,18 +512,27 @@ select {
 /* 生成按钮 — 全宽，主操作 */
 .btn-generate {
   width: 100%;
-  padding: 13px 20px;
-  font-size: 17px; font-weight: 500;
+  padding: 14px 20px;
+  font-size: 17px; font-weight: 600;
+  letter-spacing: -.224px;
   border-radius: var(--r-md);
-  margin-bottom: var(--s4);
+  margin-bottom: var(--s5);
 }
 .btn-generate .ic { font-size: 18px; }
 
 /* 快捷操作组 */
 .actions {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s2);
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s3);
 }
-.actions .btn { justify-content: flex-start; font-size: 14px; padding: 8px 12px; }
+.actions .btn {
+  justify-content: flex-start; font-size: 14px; padding: 9px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-2); border: 1px solid var(--line);
+  transition: background var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              transform var(--dur) var(--ease);
+}
+.actions .btn:hover { background: var(--surface-sunk); border-color: var(--line-strong); transform: translateY(-.5px); }
 @media (max-width: 400px) { .actions { grid-template-columns: 1fr; } }
 
 /* 分隔线 */
@@ -530,18 +553,19 @@ select {
 .preset {
   font-family: inherit; font-size: 13px; font-weight: 500;
   letter-spacing: -.12px; line-height: 1.29;
-  padding: 5px 12px;
-  border: 1px solid var(--line-strong);
+  padding: 5px 14px;
+  border: 1.5px solid var(--line-strong);
   border-radius: var(--r-pill);
   background: var(--surface); color: var(--text);
   cursor: pointer;
   transition: border-color var(--dur) var(--ease),
               color var(--dur) var(--ease),
               background var(--dur) var(--ease),
-              transform var(--dur) var(--ease);
+              transform var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
   -webkit-tap-highlight-color: transparent;
 }
-.preset:hover { border-color: var(--accent); color: var(--accent); }
+.preset:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 15%, transparent); }
 .preset:active { transform: scale(.96); }
 
 /* ============================================================
@@ -651,9 +675,10 @@ select {
    ============================================================ */
 .result-card {
   display: flex; flex-direction: column;
-  min-height: 420px;
+  min-height: 440px;
   padding: 0;
   overflow: hidden;
+  border-radius: var(--r-xl);
 }
 .result-head {
   display: flex; align-items: center; gap: var(--s3);
@@ -682,7 +707,7 @@ select {
   color: var(--text-3);
   padding: var(--s10) var(--s6);
 }
-.place .ic { font-size: 44px; opacity: .5; stroke-width: 1.2; }
+.place .ic { font-size: 48px; opacity: .4; stroke-width: 1; color: var(--line-strong); }
 .place p { font-size: 15px; letter-spacing: -.224px; line-height: 1.5; color: var(--text-2); }
 
 /* 加载中 */
@@ -1328,7 +1353,7 @@ select {
 <script>window.QRCode||document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');</script>
 <script>
 
-    const APP_VERSION = '20260902-2142';
+    const APP_VERSION = '20260902-1806';
     // 部署后的公开访问地址（GitHub Pages）。本地 file:// 或 localhost 打开时，
     // 手机无法访问本机路径，二维码必须指向这个公开地址。若你的 Pages 地址不同请改这里。
     const NB_DEPLOY_URL = 'https://qwer6533rewq.github.io/nano-banana-web/';
