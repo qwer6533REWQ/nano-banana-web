@@ -820,7 +820,7 @@ select {
   border-radius: var(--r);
   overflow: hidden;
   background: var(--surface-sunk);
-  cursor: pointer;
+  cursor: zoom-in;
   box-shadow: 0 0 0 .5px var(--line);
   transition: transform var(--dur) var(--ease-out),
               box-shadow var(--dur) var(--ease);
@@ -1335,7 +1335,7 @@ select {
         <div class="panel-head">
           <svg class="ic"><use href="#i-clock"/></svg>
           <h2>我的历史</h2>
-          <span class="panel-sub">点击可载回结果</span>
+          <span class="panel-sub">点击放大预览</span>
         </div>
         <div class="hist-list" id="historyList"></div>
         <button class="btn btn-soft" style="width:100%; margin-top:var(--s5); font-size:14px;" onclick="clearHistory()">
@@ -1384,6 +1384,9 @@ select {
   </button>
   <img id="lightboxImg" alt="预览" onclick="event.stopPropagation()">
   <div class="lightbox-bar">
+    <button class="btn btn-soft" id="lightboxLoad" style="display:none;" onclick="event.stopPropagation();loadFromPreview()">
+      <svg class="ic"><use href="#i-upload"/></svg>载回结果
+    </button>
     <button class="btn btn-soft" id="lightboxDl" onclick="event.stopPropagation()">
       <svg class="ic"><use href="#i-download"/></svg>下载原图
     </button>
@@ -1434,7 +1437,7 @@ select {
 <script>window.QRCode||document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');</script>
 <script>
 
-    const APP_VERSION = '20260903-1645';
+    const APP_VERSION = '20260903-1654';
     // 部署后的公开访问地址（GitHub Pages）。本地 file:// 或 localhost 打开时，
     // 手机无法访问本机路径，二维码必须指向这个公开地址。若你的 Pages 地址不同请改这里。
     const NB_DEPLOY_URL = 'https://qwer6533rewq.github.io/nano-banana-web/';
@@ -2380,22 +2383,32 @@ select {
       navigator.clipboard.writeText(u).then(() => showToast('链接已复制')).catch(() => showToast('复制失败'));
     }
 
-    // 点击结果图 → 灯箱放大预览
+    // 点击结果图 / 历史图 → 灯箱放大预览
     let previewUrl = '';
+    let previewHistoryIdx = -1;
     function openPreview(item) {
       const img = item.querySelector('img');
       if (!img) return;
       const u = decodeURIComponent(img.getAttribute('data-url') || '') || img.getAttribute('src') || '';
       if (!u) return;
       previewUrl = u;
+      const isHist = item.classList.contains('hist');
+      previewHistoryIdx = isHist ? (parseInt(item.dataset.hist, 10) || 0) : -1;
       const lb = document.getElementById('lightbox');
       const lbImg = document.getElementById('lightboxImg');
+      const loadBtn = document.getElementById('lightboxLoad');
       lbImg.src = u; lbImg.alt = img.alt || '预览';
+      if (loadBtn) loadBtn.style.display = isHist ? 'inline-flex' : 'none';
       lb.style.display = 'flex';
       requestAnimationFrame(() => lb.classList.add('show'));
       document.body.style.overflow = 'hidden';
       const dl = document.getElementById('lightboxDl');
       dl.onclick = () => { downloadOne(previewUrl); };
+    }
+    function loadFromPreview() {
+      if (previewHistoryIdx < 0) return;
+      loadHistory(previewHistoryIdx);
+      closePreview();
     }
     function closePreview() {
       const lb = document.getElementById('lightbox');
@@ -2468,8 +2481,8 @@ select {
       if (history.length === 0) { card.style.display = 'none'; return; }
       card.style.display = 'block';
       document.getElementById('historyList').innerHTML = history.map((it, i) => `
-        <div class="hist" onclick="loadHistory(${i})">
-          <img src="${it.url}" alt="" loading="lazy" onerror="this.style.display='none'">
+        <div class="hist" data-hist="${i}" onclick="openPreview(this)">
+          <img src="${it.url}" alt="" loading="lazy" data-url="${encodeURIComponent(it.url)}" onerror="this.style.display='none'">
           <div class="tip">${it.prompt}</div>
         </div>`).join('');
     }
@@ -2478,7 +2491,7 @@ select {
       const grid = document.getElementById('resultGrid');
       const ph = document.getElementById('placeholder');
       if (ph) ph.style.display = 'none';
-      const item = `<div class="item"><img src="${it.url}" alt="" data-url="${encodeURIComponent(it.url)}" onerror="handleImgError(this)"><div class="ov"><button class="btn btn-soft" onclick="downloadImg(this)"><svg class="ic"><use href="#i-download"/></svg>下载</button><button class="btn btn-soft" onclick="copyUrl(this)"><svg class="ic"><use href="#i-copy"/></svg>链接</button></div></div>`;
+      const item = `<div class="item" onclick="openPreview(this)"><img src="${it.url}" alt="" data-url="${encodeURIComponent(it.url)}" onerror="handleImgError(this)"><div class="ov"><button class="btn btn-soft" onclick="event.stopPropagation();downloadImg(this)"><svg class="ic"><use href="#i-download"/></svg>下载</button><button class="btn btn-soft" onclick="event.stopPropagation();copyUrl(this)"><svg class="ic"><use href="#i-copy"/></svg>链接</button></div></div>`;
       grid.innerHTML = item + grid.innerHTML;
       trimResults(grid);
       grid.style.display = 'grid';
