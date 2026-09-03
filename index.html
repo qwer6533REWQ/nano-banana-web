@@ -1300,6 +1300,17 @@ select {
             </div>
           </div>
 
+          <div class="group">
+            <label><svg class="ic"><use href="#i-layers"/></svg> 生成数量</label>
+            <div class="segment" id="genCountSeg" role="group" aria-label="生成数量">
+              <button type="button" data-n="1" class="active" onclick="setGenCount(this.dataset.n)">1</button>
+              <button type="button" data-n="2" onclick="setGenCount(this.dataset.n)">2</button>
+              <button type="button" data-n="3" onclick="setGenCount(this.dataset.n)">3</button>
+              <button type="button" data-n="4" onclick="setGenCount(this.dataset.n)">4</button>
+            </div>
+            <div class="hint">一次生成 1–4 张，全部进入结果区（不覆盖已有图）</div>
+          </div>
+
           <button class="btn btn-primary btn-generate" id="generateBtn" onclick="generate()">
             <svg class="ic"><use href="#i-sparkles"/></svg>生成图片
           </button>
@@ -1437,7 +1448,7 @@ select {
 <script>window.QRCode||document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');</script>
 <script>
 
-    const APP_VERSION = '20260903-1654';
+    const APP_VERSION = '20260903-2211';
     // 部署后的公开访问地址（GitHub Pages）。本地 file:// 或 localhost 打开时，
     // 手机无法访问本机路径，二维码必须指向这个公开地址。若你的 Pages 地址不同请改这里。
     const NB_DEPLOY_URL = 'https://qwer6533rewq.github.io/nano-banana-web/';
@@ -1462,6 +1473,7 @@ select {
     let lastResultUrls = [];     // 兼容旧引用（保留）
     let lastBatchUrls = [];      // 最近一批生成结果的 URL（用于「下载本批」）
     let autoSave = false;        // 生成后自动保存（下载到本机）开关
+    let genCount = 1;            // 批量生图数量（1–4）
     const RANDOM_PROMPTS = [
       '赛博朋克风格的未来城市夜景，霓虹灯反射在湿漉漉的街道上',
       '一只戴草帽的橘猫在向日葵花田里写生，水彩插画风',
@@ -2042,6 +2054,8 @@ select {
       autoSave = as === '1';
       const asEl = document.getElementById('autoSave');
       if (asEl) asEl.checked = autoSave;
+      const cnt = localStorage.getItem('nb_count');
+      if (cnt) setGenCount(cnt);
     }
     function saveSettings() {
       localStorage.setItem('nb_apikey', document.getElementById('apiKey').value);
@@ -2139,7 +2153,7 @@ select {
 
       const url = `${baseUrl}/v1/api/generate`;
       const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-      const body = { model, prompt, images, aspectRatio, imageSize, replyType: 'json' };
+      const body = { model, prompt, images, aspectRatio, imageSize, replyType: 'json', n: genCount };
 
       lastBeforeCredits = await fetchCreditsValue(apiKey);
       setLoading(true);
@@ -2203,7 +2217,7 @@ select {
       saveSettings();
 
       const headers = { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
-      const body = { model, prompt, size: aspectRatio, webHook: '-1', shutProgress: false };
+      const body = { model, prompt, size: aspectRatio, webHook: '-1', shutProgress: false, n: genCount };
       if (urls.length) body.urls = urls;
 
       lastBeforeCredits = await fetchCreditsValue(apiKey);
@@ -2433,6 +2447,13 @@ select {
       autoSave = !!on;
       localStorage.setItem('nb_autosave', autoSave ? '1' : '0');
       showToast(autoSave ? '已开启：生成后自动保存到本机' : '已关闭自动保存');
+    }
+    function setGenCount(n) {
+      n = Math.min(4, Math.max(1, parseInt(n, 10) || 1));
+      genCount = n;
+      const seg = document.getElementById('genCountSeg');
+      if (seg) [...seg.querySelectorAll('button')].forEach(b => b.classList.toggle('active', +b.dataset.n === n));
+      localStorage.setItem('nb_count', String(n));
     }
     function clearResults() {
       const grid = document.getElementById('resultGrid');
