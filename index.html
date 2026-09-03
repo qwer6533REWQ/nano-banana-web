@@ -769,6 +769,7 @@ select {
   overflow: hidden;
   background: var(--surface-sunk);
   box-shadow: 0 0 0 .5px var(--line);
+  cursor: zoom-in;
   transition: transform var(--dur) var(--ease-out),
               box-shadow var(--dur) var(--ease);
 }
@@ -945,6 +946,37 @@ select {
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .modal-close:hover { background: var(--fill-quiet-2); color: var(--text); }
+
+/* 图片预览灯箱 */
+.lightbox {
+  position: fixed; inset: 0; z-index: 1100;
+  display: none; align-items: center; justify-content: center;
+  padding: clamp(20px, 5vw, 56px);
+  background: rgba(0,0,0,.88);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  cursor: zoom-out;
+  opacity: 0; transition: opacity var(--dur) var(--ease);
+}
+.lightbox.show { opacity: 1; }
+.lightbox img {
+  max-width: min(94vw, 1200px);
+  max-height: 86vh;
+  width: auto; height: auto;
+  border-radius: var(--r-lg);
+  box-shadow: 0 24px 70px rgba(0,0,0,.55);
+  object-fit: contain; background: #fff;
+  cursor: default;
+}
+.lightbox-bar {
+  position: absolute; bottom: clamp(16px, 4vh, 28px); left: 50%;
+  transform: translateX(-50%);
+}
+.lightbox .modal-close {
+  background: rgba(255,255,255,.14); color: #fff;
+  width: 34px; height: 34px; font-size: 17px;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.lightbox .modal-close:hover { background: rgba(255,255,255,.26); color: #fff; }
 
 /* 模板库 */
 .tpl-cats { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
@@ -1345,6 +1377,19 @@ select {
 
 <div class="toast" id="toast"></div>
 
+<!-- ===================== 图片预览灯箱 ===================== -->
+<div class="lightbox" id="lightbox" onclick="if(event.target===this)closePreview()">
+  <button class="modal-close" onclick="closePreview()" title="关闭（Esc）">
+    <svg class="ic"><use href="#i-xmark"/></svg>
+  </button>
+  <img id="lightboxImg" alt="预览" onclick="event.stopPropagation()">
+  <div class="lightbox-bar">
+    <button class="btn btn-soft" id="lightboxDl" onclick="event.stopPropagation()">
+      <svg class="ic"><use href="#i-download"/></svg>下载原图
+    </button>
+  </div>
+</div>
+
 <!-- ===================== 二维码弹窗 ===================== -->
 <div class="modal" id="qrModal" onclick="if(event.target===this)closeQR()">
   <div class="modal-card narrow" style="position:relative;">
@@ -1389,7 +1434,7 @@ select {
 <script>window.QRCode||document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');</script>
 <script>
 
-    const APP_VERSION = '20260903-1332';
+    const APP_VERSION = '20260903-1645';
     // 部署后的公开访问地址（GitHub Pages）。本地 file:// 或 localhost 打开时，
     // 手机无法访问本机路径，二维码必须指向这个公开地址。若你的 Pages 地址不同请改这里。
     const NB_DEPLOY_URL = 'https://qwer6533rewq.github.io/nano-banana-web/';
@@ -1649,6 +1694,9 @@ select {
       setupImageDrag();
       setupPasteUpload();
       renderRecolorPresets();
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { closePreview(); closeQR(); }
+      });
     });
 
     function setMode(m) {
@@ -2256,11 +2304,11 @@ select {
       lastResultUrls = urls;
       lastBatchUrls = urls;
       const newHtml = urls.map(u => `
-        <div class="item">
+        <div class="item" onclick="openPreview(this)">
           <img src="${u}" alt="结果" loading="lazy" data-url="${encodeURIComponent(u)}" onerror="handleImgError(this)">
           <div class="ov">
-            <button class="btn btn-soft" onclick="downloadImg(this)"><svg class="ic"><use href="#i-download"/></svg>下载</button>
-            <button class="btn btn-soft" onclick="copyUrl(this)"><svg class="ic"><use href="#i-copy"/></svg>链接</button>
+            <button class="btn btn-soft" onclick="event.stopPropagation();downloadImg(this)"><svg class="ic"><use href="#i-download"/></svg>下载</button>
+            <button class="btn btn-soft" onclick="event.stopPropagation();copyUrl(this)"><svg class="ic"><use href="#i-copy"/></svg>链接</button>
           </div>
         </div>`).join('');
       grid.innerHTML = newHtml + grid.innerHTML;
@@ -2330,6 +2378,32 @@ select {
       const u = img ? decodeURIComponent(img.getAttribute('data-url') || '') : '';
       if (!u) return;
       navigator.clipboard.writeText(u).then(() => showToast('链接已复制')).catch(() => showToast('复制失败'));
+    }
+
+    // 点击结果图 → 灯箱放大预览
+    let previewUrl = '';
+    function openPreview(item) {
+      const img = item.querySelector('img');
+      if (!img) return;
+      const u = decodeURIComponent(img.getAttribute('data-url') || '') || img.getAttribute('src') || '';
+      if (!u) return;
+      previewUrl = u;
+      const lb = document.getElementById('lightbox');
+      const lbImg = document.getElementById('lightboxImg');
+      lbImg.src = u; lbImg.alt = img.alt || '预览';
+      lb.style.display = 'flex';
+      requestAnimationFrame(() => lb.classList.add('show'));
+      document.body.style.overflow = 'hidden';
+      const dl = document.getElementById('lightboxDl');
+      dl.onclick = () => { downloadOne(previewUrl); };
+    }
+    function closePreview() {
+      const lb = document.getElementById('lightbox');
+      if (lb.style.display === 'none') return;
+      lb.classList.remove('show');
+      document.body.style.overflow = '';
+      document.getElementById('lightboxImg').src = '';
+      setTimeout(() => { lb.style.display = 'none'; }, 200);
     }
 
     // 自动保存：生成成功后把本批图片依次下载到本机「下载」文件夹
