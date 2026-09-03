@@ -520,6 +520,33 @@ select {
 }
 .btn-generate .ic { font-size: 18px; }
 
+/* 自动保存开关 */
+.save-toggle {
+  display: flex; align-items: center; gap: 7px;
+  margin: calc(-1 * var(--s3)) 0 var(--s6);
+  font-size: 13px; letter-spacing: -.12px; color: var(--text-2);
+  cursor: pointer; user-select: none;
+}
+.save-toggle input {
+  appearance: none; -webkit-appearance: none;
+  width: 38px; height: 22px; flex: none;
+  border-radius: var(--r-pill);
+  background: var(--fill-quiet-2);
+  position: relative; cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+.save-toggle input::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  transition: transform var(--dur) var(--ease);
+}
+.save-toggle input:checked { background: var(--accent); }
+.save-toggle input:checked::after { transform: translateX(16px); }
+.save-toggle .ic { font-size: 15px; color: var(--text-3); }
+.save-toggle input:checked ~ .ic { color: var(--accent); }
+.save-toggle span { line-height: 1.2; }
+
 /* 快捷操作组 */
 .actions {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s3);
@@ -1245,6 +1272,12 @@ select {
             <svg class="ic"><use href="#i-sparkles"/></svg>生成图片
           </button>
 
+          <label class="save-toggle" title="开启后，每次生成成功会自动把图片下载到本机「下载」文件夹，刷新或再次生成都不会丢失">
+            <input type="checkbox" id="autoSave" onchange="toggleAutoSave(this.checked)">
+            <svg class="ic"><use href="#i-download"/></svg>
+            <span>生成后自动保存到本机</span>
+          </label>
+
           <div class="actions">
             <button class="btn btn-ghost" onclick="openTemplates()">
               <svg class="ic"><use href="#i-book"/></svg>模板库
@@ -1284,6 +1317,9 @@ select {
       <div class="result-head">
         <svg class="ic"><use href="#i-photo"/></svg>
         <h2>生成结果</h2>
+        <button class="icon-btn" id="clearResultBtn" title="清空当前结果（不影响「我的历史」）" onclick="clearResults()" style="margin-left:auto;">
+          <svg class="ic"><use href="#i-trash"/></svg>
+        </button>
       </div>
       <div class="result-body">
         <div class="place" id="placeholder">
@@ -1353,7 +1389,7 @@ select {
 <script>window.QRCode||document.write('<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>');</script>
 <script>
 
-    const APP_VERSION = '20260902-1806';
+    const APP_VERSION = '20260903-1332';
     // 部署后的公开访问地址（GitHub Pages）。本地 file:// 或 localhost 打开时，
     // 手机无法访问本机路径，二维码必须指向这个公开地址。若你的 Pages 地址不同请改这里。
     const NB_DEPLOY_URL = 'https://qwer6533rewq.github.io/nano-banana-web/';
@@ -1375,7 +1411,9 @@ select {
     let mode = 'text';
     let uploadedImages = [];
     let genStart = 0;
-    let lastResultUrls = [];
+    let lastResultUrls = [];     // 兼容旧引用（保留）
+    let lastBatchUrls = [];      // 最近一批生成结果的 URL（用于「下载本批」）
+    let autoSave = false;        // 生成后自动保存（下载到本机）开关
     const RANDOM_PROMPTS = [
       '赛博朋克风格的未来城市夜景，霓虹灯反射在湿漉漉的街道上',
       '一只戴草帽的橘猫在向日葵花田里写生，水彩插画风',
@@ -1949,6 +1987,10 @@ select {
       const lu = localStorage.getItem('nb_llm_url'); if (lu) document.getElementById('llmUrl').value = lu;
       const lk = localStorage.getItem('nb_llm_key'); if (lk) document.getElementById('llmKey').value = lk;
       const lm = localStorage.getItem('nb_llm_model'); if (lm) document.getElementById('llmModel').value = lm;
+      const as = localStorage.getItem('nb_autosave');
+      autoSave = as === '1';
+      const asEl = document.getElementById('autoSave');
+      if (asEl) asEl.checked = autoSave;
     }
     function saveSettings() {
       localStorage.setItem('nb_apikey', document.getElementById('apiKey').value);
@@ -2174,8 +2216,8 @@ select {
         <a href="${url}" target="_blank" rel="noopener" style="display:inline-block;padding:8px 16px;border-radius:10px;background:var(--accent);color:#fff;font-size:13px;text-decoration:none;">在新标签页打开原图</a>
       </div>`;
     }
-    function handleImgError(img, i) {
-      const url = (lastResultUrls && lastResultUrls[i]) || img.getAttribute('src') || '';
+    function handleImgError(img) {
+      const url = decodeURIComponent(img.getAttribute('data-url') || '') || img.getAttribute('src') || '';
       // 先尝试 fetch→blob 绕过部分防盗链/CORS（GitHub Pages 静态站无法服务端代理，主要靠浏览器尝试）
       fetch(url, { mode: 'cors' }).then(r => {
         if (!r.ok) throw new Error('status ' + r.status);
@@ -2204,35 +2246,49 @@ select {
       setLoading(false);
       const grid = document.getElementById('resultGrid');
       const urls = extractImageUrls(data.results, getBaseUrl());
-      lastResultUrls = urls;
       if (urls.length === 0) {
         showError('生成成功，但未解析到图片链接。原始返回：' + JSON.stringify(data).slice(0, 400));
-        grid.style.display = 'none';
         return;
       }
-      grid.innerHTML = urls.map((u, i) => `
+      const placeholder = document.getElementById('placeholder');
+      if (placeholder) placeholder.style.display = 'none';
+      // 累积：把本批结果追加到结果区（新结果置顶），不再覆盖旧结果
+      lastResultUrls = urls;
+      lastBatchUrls = urls;
+      const newHtml = urls.map(u => `
         <div class="item">
-          <img src="${u}" alt="结果" loading="lazy" onerror="handleImgError(this, ${i})">
+          <img src="${u}" alt="结果" loading="lazy" data-url="${encodeURIComponent(u)}" onerror="handleImgError(this)">
           <div class="ov">
-            <button class="btn btn-soft" onclick="downloadImg(${i})"><svg class="ic"><use href="#i-download"/></svg>下载</button>
-            <button class="btn btn-soft" onclick="copyUrl(${i})"><svg class="ic"><use href="#i-copy"/></svg>链接</button>
+            <button class="btn btn-soft" onclick="downloadImg(this)"><svg class="ic"><use href="#i-download"/></svg>下载</button>
+            <button class="btn btn-soft" onclick="copyUrl(this)"><svg class="ic"><use href="#i-copy"/></svg>链接</button>
           </div>
         </div>`).join('');
+      grid.innerHTML = newHtml + grid.innerHTML;
+      trimResults(grid);
       grid.style.display = 'grid';
       const info = document.getElementById('responseInfo');
       const sec = genStart ? ((Date.now() - genStart) / 1000).toFixed(1) : null;
-      let dlAll = urls.length > 1
-        ? ` <button class="btn btn-soft" style="margin-left:8px;padding:3px 10px;font-size:12px;" onclick="downloadAll()"><svg class="ic"><use href="#i-download"/></svg>全部下载</button>` : '';
-      info.innerHTML = `任务 <span style="font-family:var(--mono);font-size:12px;">${data.id || 'N/A'}</span> · <span style="color:var(--ok);font-weight:600;"><svg class="ic" style="font-size:12px;"><use href="#i-check"/></svg> 成功</span> · ${urls.length} 张` +
+      const total = grid.querySelectorAll('.item').length;
+      let dlAll = ` <button class="btn btn-soft" style="margin-left:8px;padding:3px 10px;font-size:12px;" onclick="downloadAll(false)"><svg class="ic"><use href="#i-download"/></svg>下载本批</button>`
+        + ` <button class="btn btn-soft" style="margin-left:6px;padding:3px 10px;font-size:12px;" onclick="downloadAll(true)"><svg class="ic"><use href="#i-download"/></svg>下载全部(${total})</button>`;
+      info.innerHTML = `任务 <span style="font-family:var(--mono);font-size:12px;">${data.id || 'N/A'}</span> · <span style="color:var(--ok);font-weight:600;"><svg class="ic" style="font-size:12px;"><use href="#i-check"/></svg> 成功</span> · 本批 ${urls.length} 张 · 累计 ${total} 张` +
         (sec ? ` · <svg class="ic" style="font-size:12px;"><use href="#i-clock"/></svg> 耗时 ${sec}s` : '') + dlAll;
       info.style.display = 'block';
+      // 自动保存：开启则把本批图片下载到本机
+      if (autoSave) scheduleAutoSave(urls);
+    }
+    // 结果区最多保留 60 张，超出删除最旧的（底部）
+    function trimResults(grid) {
+      const MAX = 60;
+      const nodes = grid.querySelectorAll('.item');
+      if (nodes.length > MAX) {
+        for (let i = MAX; i < nodes.length; i++) nodes[i].remove();
+      }
     }
     // 一键直接下载：优先 fetch→blob 强制下载，跨域受限时退回新窗口
-    async function downloadImg(i) {
-      const u = lastResultUrls[i];
-      if (!u) return;
-      const fname = `nano-banana-${i + 1}-${Date.now()}.png`;
-      showToast('正在下载…');
+    async function downloadOne(u, name) {
+      if (!u) return false;
+      const fname = name || `nano-banana-${Date.now()}.png`;
       try {
         const res = await fetch(u, { mode: 'cors' });
         if (!res.ok) throw new Error('status ' + res.status);
@@ -2242,26 +2298,68 @@ select {
         a.href = obj; a.download = fname;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(obj), 5000);
-        showToast('已开始下载');
+        return true;
       } catch (e) {
         const w = window.open(u, '_blank', 'noopener');
-        showToast(w ? '已新窗口打开，可右键保存' : '下载被拦截，请允许弹窗后重试');
+        return !!w;
       }
     }
-    async function downloadAll() {
-      if (!lastResultUrls.length) return;
-      showToast('开始批量下载（' + lastResultUrls.length + ' 张）');
-      for (let i = 0; i < lastResultUrls.length; i++) {
-        await downloadImg(i);
-        await new Promise(r => setTimeout(r, 700));
+    async function downloadImg(btn) {
+      const img = btn.closest('.item') && btn.closest('.item').querySelector('img');
+      const u = img ? decodeURIComponent(img.getAttribute('data-url') || '') : '';
+      if (!u) return;
+      showToast('正在下载…');
+      const ok = await downloadOne(u);
+      showToast(ok ? '已开始下载' : '下载被拦截，已新窗口打开，可右键保存');
+    }
+    async function downloadAll(all) {
+      const grid = document.getElementById('resultGrid');
+      const list = all
+        ? [...grid.querySelectorAll('.item img')].map(img => decodeURIComponent(img.getAttribute('data-url') || ''))
+        : lastBatchUrls.slice();
+      const valid = list.filter(Boolean);
+      if (!valid.length) { showToast('没有可下载的图片'); return; }
+      showToast('开始批量下载（' + valid.length + ' 张）');
+      for (const u of valid) {
+        await downloadOne(u);
+        await sleep(700);
       }
     }
-    function copyUrl(i) {
-      const u = lastResultUrls[i];
+    function copyUrl(btn) {
+      const img = btn.closest('.item') && btn.closest('.item').querySelector('img');
+      const u = img ? decodeURIComponent(img.getAttribute('data-url') || '') : '';
       if (!u) return;
       navigator.clipboard.writeText(u).then(() => showToast('链接已复制')).catch(() => showToast('复制失败'));
     }
 
+    // 自动保存：生成成功后把本批图片依次下载到本机「下载」文件夹
+    async function scheduleAutoSave(urls) {
+      const valid = (urls || []).filter(Boolean);
+      if (!valid.length) return;
+      showToast('已开启自动保存，正在下载本批 ' + valid.length + ' 张…');
+      for (const u of valid) {
+        await downloadOne(u);
+        await sleep(700);
+      }
+    }
+    function toggleAutoSave(on) {
+      autoSave = !!on;
+      localStorage.setItem('nb_autosave', autoSave ? '1' : '0');
+      showToast(autoSave ? '已开启：生成后自动保存到本机' : '已关闭自动保存');
+    }
+    function clearResults() {
+      const grid = document.getElementById('resultGrid');
+      if (!grid.querySelectorAll('.item').length) { showToast('没有可清空的结果'); return; }
+      if (!confirm('清空当前结果区？已下载到本机的图片不会删除，且「我的历史」中的记录保留。')) return;
+      grid.innerHTML = '';
+      grid.style.display = 'none';
+      lastResultUrls = [];
+      lastBatchUrls = [];
+      const ph = document.getElementById('placeholder');
+      if (ph) ph.style.display = 'flex';
+      document.getElementById('responseInfo').style.display = 'none';
+      showToast('已清空当前结果');
+    }
     function shareLink() {
       const params = {
         prompt: document.getElementById('prompt').value.trim(),
@@ -2303,13 +2401,17 @@ select {
     }
     function loadHistory(i) {
       const it = history[i]; if (!it) return;
-      lastResultUrls = [it.url];
       const grid = document.getElementById('resultGrid');
-      grid.innerHTML = `<div class="item"><img src="${it.url}" alt="" onerror="handleImgError(this, 0)"><div class="ov"><button class="btn btn-soft" onclick="downloadImg(0)"><svg class="ic"><use href="#i-download"/></svg>下载</button><button class="btn btn-soft" onclick="copyUrl(0)"><svg class="ic"><use href="#i-copy"/></svg>链接</button></div></div>`;
+      const ph = document.getElementById('placeholder');
+      if (ph) ph.style.display = 'none';
+      const item = `<div class="item"><img src="${it.url}" alt="" data-url="${encodeURIComponent(it.url)}" onerror="handleImgError(this)"><div class="ov"><button class="btn btn-soft" onclick="downloadImg(this)"><svg class="ic"><use href="#i-download"/></svg>下载</button><button class="btn btn-soft" onclick="copyUrl(this)"><svg class="ic"><use href="#i-copy"/></svg>链接</button></div></div>`;
+      grid.innerHTML = item + grid.innerHTML;
+      trimResults(grid);
       grid.style.display = 'grid';
-      document.getElementById('placeholder').style.display = 'none';
+      lastBatchUrls = [it.url];
       document.getElementById('responseInfo').style.display = 'none';
       document.getElementById('prompt').value = it.prompt;
+      showToast('已载入历史结果到下方');
     }
     function clearHistory() {
       if (confirm('确认清空历史记录？')) {
